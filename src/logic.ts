@@ -1,12 +1,20 @@
 import { TABLE_TP2, TABLE_TP3A, type TarifPosten } from './fees';
 
-// WICHTIG: Wir exportieren hier Dinge aus fees.ts weiter, damit der Calculator
-// alles bequem aus einer Datei ("logic") importieren kann.
+// Re-Export für die UI
 export { TP_LABELS, type TarifPosten } from './fees';
 
-// Konfigurations-Konstanten
-const VAT_RATE = 0.081; // 8.1% MwSt (Aktueller Satz FL/CH)
-const GENOSSEN_SURCHARGE = 0.10; // 10% Zuschlag für mehrere Klienten
+// Konstanten
+const VAT_RATE = 0.081; // 8.1% MwSt
+const GENOSSEN_SURCHARGE = 0.10; // 10% Streitgenossenzuschlag
+
+// Typ für eine einzelne berechnete Position in der Liste
+export interface Position {
+  id: string;
+  label: string; // z.B. "Klage (TP 3A)"
+  value: number; // Streitwert
+  type: TarifPosten;
+  details: CalculationResult; // Das Rechenergebnis dieser Zeile
+}
 
 export interface CalculationResult {
   baseFee: number;
@@ -15,19 +23,23 @@ export interface CalculationResult {
   netTotal: number;
   vatAmount: number;
   grossTotal: number;
+  config: {
+    hasUnitRate: boolean;
+    hasSurcharge: boolean;
+  }
 }
 
 export function calculateFees(
   value: number,
   type: TarifPosten,
-  hasUnitRate: boolean, // Einheitssatz
-  hasSurcharge: boolean // Genossenzuschlag
+  hasUnitRate: boolean,
+  hasSurcharge: boolean
 ): CalculationResult {
   
-  // 1. Basis-Honorar ermitteln
+  // 1. Basis-Honorar
   let baseFee = getBaseFee(value, type);
 
-  // 2. Einheitssatz (EHS) berechnen
+  // 2. Einheitssatz (EHS) - Art 23
   // 50% bis 15.000, danach 40%
   let unitRateAmount = 0;
   if (hasUnitRate) {
@@ -35,10 +47,10 @@ export function calculateFees(
     unitRateAmount = baseFee * percentage;
   }
 
-  // Zwischensumme für Genossenzuschlag (Basis + EHS)
+  // Zwischensumme (Basis + EHS)
   const subTotalForSurcharge = baseFee + unitRateAmount;
 
-  // 3. Genossenzuschlag (Streitgenossen)
+  // 3. Genossenzuschlag
   let surchargeAmount = 0;
   if (hasSurcharge) {
     surchargeAmount = subTotalForSurcharge * GENOSSEN_SURCHARGE;
@@ -55,7 +67,11 @@ export function calculateFees(
     surchargeAmount,
     netTotal,
     vatAmount,
-    grossTotal
+    grossTotal,
+    config: {
+      hasUnitRate,
+      hasSurcharge
+    }
   };
 }
 
@@ -69,8 +85,7 @@ function getBaseFee(value: number, type: TarifPosten): number {
     }
   }
 
-  // B. Werte über 140.000 bis 500.000
-  // Regel: Je angefangene weitere 20.000
+  // B. Werte über 140.000 bis 500.000 (Schritte)
   const stepIncrement = type === 'TP2' ? 80 : 159;
   
   if (value <= 500000) {
@@ -80,7 +95,7 @@ function getBaseFee(value: number, type: TarifPosten): number {
     return baseAt140k + (steps * stepIncrement);
   }
 
-  // C. Werte über 500.000 (Prozentualer Zuschlag)
+  // C. Werte über 500.000 (Prozentual)
   const baseAt140k = table[table.length - 1].fee;
   const stepsTo500k = Math.ceil((500000 - 140000) / 20000);
   const feeAt500k = baseAt140k + (stepsTo500k * stepIncrement);
