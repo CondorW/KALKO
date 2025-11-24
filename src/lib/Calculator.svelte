@@ -1,4 +1,5 @@
 <script lang="ts">
+  // Importiert jetzt alles korrekt aus logic.ts (weil wir den Export dort hinzugefügt haben)
   import { calculateFees, formatCurrency, TP_LABELS, type TarifPosten } from '../logic';
 
   // State (Reaktive Variablen)

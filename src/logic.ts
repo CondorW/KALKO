@@ -1,5 +1,9 @@
 import { TABLE_TP2, TABLE_TP3A, type TarifPosten } from './fees';
 
+// WICHTIG: Wir exportieren hier Dinge aus fees.ts weiter, damit der Calculator
+// alles bequem aus einer Datei ("logic") importieren kann.
+export { TP_LABELS, type TarifPosten } from './fees';
+
 // Konfigurations-Konstanten
 const VAT_RATE = 0.081; // 8.1% MwSt (Aktueller Satz FL/CH)
 const GENOSSEN_SURCHARGE = 0.10; // 10% Zuschlag für mehrere Klienten
