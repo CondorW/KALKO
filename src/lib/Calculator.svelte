@@ -1,16 +1,14 @@
 <script lang="ts">
   import { calculateFees, formatCurrency, TP_LABELS, SEARCH_OPTIONS, type TarifPosten, type Position, type SearchOption } from '../logic';
 
-  // --- EDITOR STATE ---
   let editValue = $state(50000);
   let editType = $state<TarifPosten>('TP3A');
-  let editMultiplier = $state(1); // NEU: Menge/Dauer
+  let editMultiplier = $state(1);
   let editUnitRate = $state(true);
   let editSurcharge = $state(false);
   let editForeign = $state(false);
   let editLabel = $state('');
 
-  // --- SEARCH STATE ---
   let searchQuery = $state('Klage / Zivilprozess (TP 3A)');
   let showDropdown = $state(false);
   
@@ -21,28 +19,18 @@
     })
   );
 
-  // --- LOGIC ---
-  // Prüfen ob Zeit-basierter Typ
   let isTimeBased = $derived(['TP7', 'TP8', 'TP9'].includes(editType));
-  // Prüfen ob Nebenleistung (Auto-Disable EHS)
+  let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType));
   let isAncillary = $derived(['TP5', 'TP6', 'TP7', 'TP8', 'TP9'].includes(editType));
 
-  // Wenn man zu einer Nebenleistung wechselt, schalte EHS aus (UX)
   $effect(() => {
-    if (isAncillary) {
-        editUnitRate = false;
-    } else {
-        editUnitRate = true; // Reset für Hauptleistungen
-    }
-    // Reset Multiplier wenn nicht TimeBased
-    if (!isTimeBased && editType !== 'TP5' && editType !== 'TP6') {
-        editMultiplier = 1;
-    }
+    if (isAncillary) editUnitRate = false;
+    else editUnitRate = true;
+    if (!isTimeBased && !isQuantityBased) editMultiplier = 1;
   });
 
   let previewResult = $derived(calculateFees(editValue, editType, editMultiplier, editUnitRate, editSurcharge, editForeign));
 
-  // --- ACTIONS ---
   let positions = $state<Position[]>([]);
   let copied = $state(false);
 
@@ -53,17 +41,12 @@
   }
 
   function addPosition() {
-    // Label generieren
     let autoLabel = editLabel.trim();
     if (!autoLabel) {
         const base = TP_LABELS[editType];
-        if (isTimeBased) {
-            autoLabel = `${base} (${editMultiplier} Einheiten)`;
-        } else if (editMultiplier > 1) {
-            autoLabel = `${base} (${editMultiplier}x)`;
-        } else {
-            autoLabel = base;
-        }
+        if (isTimeBased) autoLabel = `${base} (${editMultiplier} Einh.)`;
+        else if (editMultiplier > 1) autoLabel = `${base} (${editMultiplier}x)`;
+        else autoLabel = base;
     }
 
     const newPos: Position = {
@@ -75,9 +58,8 @@
       details: previewResult
     };
     positions.push(newPos);
-    
     editLabel = '';
-    editMultiplier = 1;
+    if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
   function removePosition(id: string) {
@@ -85,7 +67,6 @@
     if (idx !== -1) positions.splice(idx, 1);
   }
 
-  // --- TOTALS ---
   let totalNet = $derived(positions.reduce((sum, p) => sum + p.details.netTotal, 0));
   let totalVat = $derived(positions.reduce((sum, p) => sum + p.details.vatAmount, 0));
   let totalGross = $derived(positions.reduce((sum, p) => sum + p.details.grossTotal, 0));
@@ -100,13 +81,11 @@
     positions.forEach((p, i) => {
       text += `${i + 1}. ${p.label}\n`;
       
-      // Detailzeile anpassen für Zeit/Anzahl
       let baseTxt = "Basisgebühr";
       if (p.details.config.isTimeBased) baseTxt = `Honorar (${p.multiplier} Einh.)`;
       else if (p.multiplier > 1) baseTxt = `Honorar (${p.multiplier}x)`;
       
       text += `   ${baseTxt.padEnd(28, '.')} ${padNum(p.details.baseFee)}\n`;
-      
       if (p.details.config.hasUnitRate) {
         const ehsLabel = p.value <= 15000 ? "50%" : "40%";
         text += `   + EHS (${ehsLabel}) .......................... ${padNum(p.details.unitRateAmount)}\n`;
@@ -143,7 +122,6 @@
       
       <div class="space-y-4">
         
-        <!-- SEARCH -->
         <div class="relative">
           <label class="label-text" for="search">Leistungstyp (Suche)</label>
           <input 
@@ -151,7 +129,7 @@
             oninput={(e) => { searchQuery = e.currentTarget.value; showDropdown = true; }}
             onfocus={() => showDropdown = true}
             onblur={() => setTimeout(() => showDropdown = false, 200)}
-            placeholder="z.B. 'kla' oder 'ber'"
+            placeholder="z.B. 'scheid', 'klage', 'brief'"
             class="input-field" autocomplete="off"
           />
           {#if showDropdown}
@@ -165,20 +143,17 @@
           {/if}
         </div>
 
-        <!-- Optional Label -->
         <div>
           <label class="label-text" for="label">Bezeichnung (Optional)</label>
           <input id="label" type="text" bind:value={editLabel} placeholder="Zusatztext..." class="input-field" />
         </div>
 
-        <!-- Streitwert -->
         <div>
           <label class="label-text" for="value">Streitwert (CHF)</label>
           <input id="value" type="number" bind:value={editValue} class="input-field font-mono text-lg" min="0" step="100" />
         </div>
 
-        <!-- Multiplier (Conditional) -->
-        {#if isTimeBased || editType === 'TP5' || editType === 'TP6'}
+        {#if isTimeBased || isQuantityBased}
             <div class="bg-legal-700/30 p-2 rounded border border-legal-600/50">
                 <label class="label-text text-legal-accent" for="mult">
                     {isTimeBased ? 'Anzahl halbe Stunden / Einheiten' : 'Anzahl (Stück)'}
@@ -187,11 +162,13 @@
             </div>
         {/if}
 
-        <!-- Options -->
         <div class="space-y-3 pt-2 bg-legal-900/50 p-3 rounded border border-legal-700/50">
-          <label class="flex items-center space-x-3 cursor-pointer group {isAncillary ? 'opacity-50' : ''}">
-            <input type="checkbox" bind:checked={editUnitRate} disabled={isAncillary} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <span class="text-sm text-slate-300">Einheitssatz (Art. 23)</span>
+          <label class="flex items-center space-x-3 cursor-pointer group {isAncillary ? 'opacity-75' : ''}">
+            <input type="checkbox" bind:checked={editUnitRate} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
+            <span class="text-sm text-slate-300">
+                Einheitssatz (Art. 23)
+                {#if isAncillary}<span class="text-xs text-slate-500 block ml-7">(Bei Nebenleistungen unüblich)</span>{/if}
+            </span>
           </label>
           
           <label class="flex items-center space-x-3 cursor-pointer group">
@@ -245,6 +222,8 @@
                     </div>
                     <div class="text-xs text-slate-500 pl-8 space-y-1">
                         <div>Basis: {formatCurrency(pos.details.baseFee)}</div>
+                        {#if pos.details.config.hasUnitRate} <div>+ EHS: {formatCurrency(pos.details.unitRateAmount)}</div>{/if}
+                        {#if pos.details.config.hasSurcharge} <div class="text-legal-gold">+ Genossenzuschlag: {formatCurrency(pos.details.surchargeAmount)}</div>{/if}
                         {#if pos.details.config.isForeign} <div class="text-orange-300">⚠ USt-frei (Ausland)</div> {/if}
                     </div>
                 </div>

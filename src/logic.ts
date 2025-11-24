@@ -12,7 +12,7 @@ export interface Position {
   id: string;
   label: string;
   value: number;
-  multiplier: number; // NEU: Anzahl (für Briefe) oder Dauer (für TP 7,8)
+  multiplier: number; 
   type: TarifPosten;
   details: CalculationResult;
 }
@@ -28,41 +28,34 @@ export interface CalculationResult {
     hasUnitRate: boolean;
     hasSurcharge: boolean;
     isForeign: boolean;
-    isTimeBased: boolean; // Flag für UI Formatierung
+    isTimeBased: boolean;
   }
 }
 
 export function calculateFees(
   value: number,
   type: TarifPosten,
-  multiplier: number = 1, // Standard 1
+  multiplier: number = 1,
   hasUnitRate: boolean,
   hasSurcharge: boolean,
   isForeign: boolean
 ): CalculationResult {
   
-  let baseFee = getBaseFee(value, type);
+  let singleUnitFee = getBaseFee(value, type);
 
-  // Sonderregeln für "Nebenleistungen" (Art. 23)
-  // TP 5, 6, 8, 9 sind meist Nebenleistungen, die durch EHS abgegolten wären.
-  // Wenn man sie manuell hinzufügt, sollte man idR KEINEN EHS darauf berechnen.
   const isAncillary = ['TP5', 'TP6', 'TP7', 'TP8', 'TP9'].includes(type);
   const isTimeBased = ['TP7', 'TP8', 'TP9'].includes(type);
 
-  // Multiplikator anwenden (z.B. 2 Stunden Besprechung)
-  let totalBase = baseFee * multiplier;
+  let totalBase = singleUnitFee * multiplier;
 
-  // EHS Berechnung
-  // Falls es eine Nebenleistung ist, wird EHS meist ignoriert (außer User erzwingt es)
   let unitRateAmount = 0;
-  if (hasUnitRate && !isAncillary) {
+  if (hasUnitRate) {
     const percentage = value <= 15000 ? 0.50 : 0.40;
     unitRateAmount = totalBase * percentage;
   }
 
   const subTotalForSurcharge = totalBase + unitRateAmount;
 
-  // Genossenzuschlag
   let surchargeAmount = 0;
   if (hasSurcharge) {
     surchargeAmount = subTotalForSurcharge * GENOSSEN_SURCHARGE;
@@ -73,14 +66,14 @@ export function calculateFees(
   const grossTotal = netTotal + vatAmount;
 
   return {
-    baseFee: totalBase, // Rückgabe inkl. Multiplikator
+    baseFee: totalBase,
     unitRateAmount,
     surchargeAmount,
     netTotal,
     vatAmount,
     grossTotal,
     config: {
-      hasUnitRate: hasUnitRate && !isAncillary,
+      hasUnitRate,
       hasSurcharge,
       isForeign,
       isTimeBased
@@ -90,83 +83,90 @@ export function calculateFees(
 
 function getBaseFee(value: number, type: TarifPosten): number {
   switch (type) {
-    // --- ZEIT & BRIEFE ---
-    case 'TP5': // Einfache Schreiben
-      return getScaledFee(value, TABLE_TP5, 17, 0, 100); // Max 100
+    // --- NEBENLEISTUNGEN (Bleiben gedeckelt) ---
+    case 'TP5': return getScaledFee(value, TABLE_TP5, 17, 100);
+    case 'TP6': {
+      const tp5Raw = getScaledFee(value, TABLE_TP5, 17, Infinity); 
+      return Math.min(tp5Raw * 2, 330);
+    }
+    case 'TP7': {
+      const tp7Raw = getScaledFee(value, TABLE_TP5, 17, Infinity);
+      return Math.min(tp7Raw * 4, 440);
+    }
+    case 'TP8': return getScaledFee(value, TABLE_TP8, 15, 600);
+    case 'TP9': return 75;
+
+    // --- HAUPTVERFAHREN (Unbegrenzt skalierbar) ---
     
-    case 'TP6': // Komplexe Briefe (Doppelte TP 5, Max 330)
-      const tp5 = getScaledFee(value, TABLE_TP5, 17, 0, 1000); // Hole Basis ohne Cap
-      return Math.min(tp5 * 2, 330);
+    case 'TP1': // Insolvenz
+      // >500k: 0.1‰ (0.0001), >5M: 0.05‰ (0.00005)
+      return getStandardFee(value, TABLE_TP1, 17, 0.0001, 0.00005, Infinity);
 
-    case 'TP7': // Auswärts (Wie TP 6 per halbe Stunde, Max 220/440)
-      // Wir nehmen hier den Satz für Rechtsanwalt (2x TP6 Basis = 4x TP5) -> Max 440
-      const tp7Base = getScaledFee(value, TABLE_TP5, 17, 0, 1000) * 2; 
-      // TP 7 Abs 2: Doppelte von Abs 1 (der TP 6 entspricht) = 2 * TP6
-      return Math.min(tp7Base * 2, 440);
+    case 'TP2': // Mahn / Scheidung
+      // >500k: 0.5‰ (0.0005), >5M: 0.25‰ (0.00025)
+      return getStandardFee(value, TABLE_TP2, 80, 0.0005, 0.00025, Infinity);
 
-    case 'TP8': // Konferenzen (Tabelle, Max 600)
-      return getScaledFee(value, TABLE_TP8, 15, 0, 600);
+    case 'TP3A': // Klage (Standard)
+      // >500k: 1% (0.01) -> ACHTUNG: Prozent, nicht Promille!
+      // >5M: 0.5% (0.005) -> Prozent!
+      // Kein Cap (Infinity)
+      return getStandardFee(value, TABLE_TP3A, 159, 0.01, 0.005, Infinity);
 
-    case 'TP9': // Reisezeit (Pauschal 75 Fr pro Stunde)
-      return 75;
+    case 'TP3B': // Berufung
+      // >500k: 1.25% (0.0125)
+      // >5M: 0.625% (0.00625)
+      return getStandardFee(value, TABLE_TP3B, 198, 0.0125, 0.00625, Infinity);
 
-    // --- STANDARD VERFAHREN ---
-    case 'TP1':
-      return getStandardFee(value, TABLE_TP1, 17, 0.0001, 0.00005, 1426); // Max 1426
-    case 'TP2':
-      return getStandardFee(value, TABLE_TP2, 80, 0.005, 0.0025, 7128); // Max 7128
-    case 'TP3B':
-      return getStandardFee(value, TABLE_TP3B, 198, 0.0125, 0.00625, 54000);
-    case 'TP3C':
-      return getStandardFee(value, TABLE_TP3C, 238, 0.015, 0.0075, 64800);
-    case 'TP3A':
-    default:
-      return getStandardFee(value, TABLE_TP3A, 159, 0.01, 0.005, 43200);
+    case 'TP3C': // Revision
+      // >500k: 1.5% (0.015)
+      // >5M: 0.75% (0.0075)
+      return getStandardFee(value, TABLE_TP3C, 238, 0.015, 0.0075, Infinity);
+
+    default: return 0;
   }
 }
 
-// Helper für Tabellen wie TP 1, 2, 3 (mit Promille-Zuschlag über 500k)
 function getStandardFee(value: number, table: any[], stepInc: number, pctHigh: number, pctSuperHigh: number, maxCap: number): number {
-  // A. Tabelle
+  // 1. Tabelle (bis 140k)
   for (const step of table) {
     if (value <= step.limit) return step.fee;
   }
   
-  // B. Über 140k bis 500k (Schritte je 20k)
+  const lastTableStep = table[table.length - 1];
+
+  // 2. Bis 500k (Lineare Schritte)
   if (value <= 500000) {
-    const baseAt140k = table[table.length - 1].fee;
     const excess = value - 140000;
     const steps = Math.ceil(excess / 20000);
-    return baseAt140k + (steps * stepInc);
+    return lastTableStep.fee + (steps * stepInc);
   }
 
-  // C. Über 500k bis 5 Mio (Promille 1)
-  const baseAt140k = table[table.length - 1].fee;
+  // 3. Bis 5 Mio (Prozentstufe 1)
   const stepsTo500k = Math.ceil((500000 - 140000) / 20000);
-  const feeAt500k = baseAt140k + (stepsTo500k * stepInc);
+  const feeAt500k = lastTableStep.fee + (stepsTo500k * stepInc);
   
   if (value <= 5000000) {
     const excess = value - 500000;
-    return Math.min(feeAt500k + (excess * pctHigh), maxCap);
+    const result = feeAt500k + (excess * pctHigh);
+    return Math.min(result, maxCap);
   }
 
-  // D. Über 5 Mio (Promille 2)
+  // 4. Über 5 Mio (Prozentstufe 2)
   const feeAt5Mio = feeAt500k + (4500000 * pctHigh);
   const excess = value - 5000000;
-  return Math.min(feeAt5Mio + (excess * pctSuperHigh), maxCap);
+  const result = feeAt5Mio + (excess * pctSuperHigh);
+  
+  return Math.min(result, maxCap);
 }
 
-// Helper für einfache Tabellen wie TP 5, 8 (je 20k Schritte, harter Cap)
-function getScaledFee(value: number, table: any[], stepInc: number, pct: number, maxCap: number): number {
+function getScaledFee(value: number, table: any[], stepInc: number, maxCap: number): number {
   for (const step of table) {
     if (value <= step.limit) return step.fee;
   }
-  // Über Tabelle (meist 25k oder 50k)
   const lastStep = table[table.length - 1];
   const excess = value - lastStep.limit;
   const steps = Math.ceil(excess / 20000);
   const calc = lastStep.fee + (steps * stepInc);
-  
   return Math.min(calc, maxCap);
 }
 
