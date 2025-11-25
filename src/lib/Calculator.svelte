@@ -1,158 +1,173 @@
 <script lang="ts">
   import { calculateFees, formatCurrency, ACTION_ITEMS, TP_LABELS, type TarifPosten, type Position, type ActionItem } from '../logic';
+  import { GKG_LABELS, type GKG_COLUMN } from '../tarife/gkg';
 
-  // --- EDITOR STATE ---
+  // --- STATE ---
+  let editId = $state<string | null>(null);
+  
+  // Inputs
   let editValue = $state(50000);
   let editType = $state<TarifPosten>('TP3A');
+  let editGkgColumn = $state<GKG_COLUMN | undefined>('zivil'); // Standard Zivil
+  let editIsAppeal = $state(false); // Rechtsmittel?
+  
   let editMultiplier = $state(1);
   let editUnitRate = $state(true);
   let editSurcharge = $state(false);
   let editForeign = $state(false);
+  let editIncludeCourtFee = $state(false);
+  
   let editLabel = $state('');
-  let editDesc = $state(''); // Rechtsgrundlage
+  let editDesc = $state('');
 
-  // --- SEARCH ---
+  // Search
   let searchQuery = $state('');
   let showDropdown = $state(false);
   
-  // Verbesserte Suche über Keywords & Labels
   let filteredActions = $derived(
     ACTION_ITEMS.filter(item => {
-      if (!searchQuery) return false; // Erst zeigen wenn man tippt
+      if (!searchQuery && !showDropdown) return false;
       const q = searchQuery.toLowerCase();
-      return item.label.toLowerCase().includes(q) || 
-             item.keywords.some(k => k.includes(q));
+      return item.label.toLowerCase().includes(q) || item.keywords.some(k => k.includes(q));
     })
   );
 
-  // --- HELPERS ---
   let isTimeBased = $derived(['TP7', 'TP8', 'TP9'].includes(editType));
   let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType));
-  
-  // Prüfen, ob EHS sinnvoll ist (Hauptleistung vs. Nebenleistung)
-  // Art 23: Nebenleistungen (5,6,8) haben EHS nur, wenn sie Hauptleistung ersetzen.
   let isAncillary = $derived(['TP5', 'TP6', 'TP7', 'TP8', 'TP9'].includes(editType));
 
-  $effect(() => {
-    // Auto-EHS: An bei Hauptleistungen, Aus bei Nebenleistungen
-    if (isAncillary) editUnitRate = false;
-    else editUnitRate = true;
+  // Preview Logic
+  let previewResult = $derived(calculateFees(
+    editValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
+  ));
 
-    if (!isTimeBased && !isQuantityBased) editMultiplier = 1;
-  });
-
-  let previewResult = $derived(calculateFees(editValue, editType, editMultiplier, editUnitRate, editSurcharge, editForeign));
-
-  // --- ACTIONS ---
   let positions = $state<Position[]>([]);
   let copied = $state(false);
 
+  // --- ACTIONS ---
+
   function selectAction(item: ActionItem) {
     editType = item.id;
-    searchQuery = ''; // Reset Search
+    editGkgColumn = item.gkgColumn; // GKG Typ übernehmen
+    editIsAppeal = item.id === 'TP3B' || item.id === 'TP3C'; // Auto-Detect Appeal
+    
+    searchQuery = item.label;
     showDropdown = false;
-    editLabel = item.label; // Auto-Fill Label
-    editDesc = item.description; // Setze Tooltip Info
+    
+    if (!editId) {
+        editLabel = item.label;
+        editDesc = item.description;
+    }
+    
+    // Auto-GKG: Wenn Aktion einen GKG Typ hat, aktiviere Checkbox
+    if (item.gkgColumn) editIncludeCourtFee = true;
+    else editIncludeCourtFee = false;
   }
 
-  function addPosition() {
-    let finalLabel = editLabel.trim();
-    if (!finalLabel) finalLabel = TP_LABELS[editType];
+  function savePosition() {
+    let finalLabel = editLabel.trim() || TP_LABELS[editType];
+    const newDetails = calculateFees(
+        editValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
+    );
 
-    const newPos: Position = {
-      id: crypto.randomUUID(),
-      label: finalLabel,
-      description: editDesc,
-      value: editValue,
-      multiplier: editMultiplier,
-      type: editType,
-      details: previewResult
+    const posData: Position = {
+        id: editId || crypto.randomUUID(),
+        label: finalLabel,
+        description: editDesc,
+        value: editValue,
+        multiplier: editMultiplier,
+        type: editType,
+        gkgColumn: editGkgColumn,
+        isAppeal: editIsAppeal,
+        details: newDetails
     };
-    positions.push(newPos);
-    
-    // Reset aber behalte Werte für schnelles Arbeiten
+
+    if (editId) {
+        const idx = positions.findIndex(p => p.id === editId);
+        if (idx !== -1) positions[idx] = posData;
+        editId = null;
+    } else {
+        positions.push(posData);
+    }
+    resetEditor();
+  }
+
+  function editPosition(pos: Position) {
+    editId = pos.id;
+    editValue = pos.value;
+    editType = pos.type;
+    editGkgColumn = pos.gkgColumn;
+    editIsAppeal = !!pos.isAppeal;
+    editMultiplier = pos.multiplier;
+    editUnitRate = pos.details.config.hasUnitRate;
+    editSurcharge = pos.details.config.hasSurcharge;
+    editForeign = pos.details.config.isForeign;
+    editIncludeCourtFee = pos.details.courtFee > 0;
+    editLabel = pos.label;
+    editDesc = pos.description || '';
+    searchQuery = pos.label;
+  }
+
+  function resetEditor() {
+    editId = null;
     editLabel = '';
-    editDesc = ''; 
+    editDesc = '';
+    searchQuery = '';
+    editIncludeCourtFee = false;
     if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
   function removePosition(id: string) {
     const idx = positions.findIndex(p => p.id === id);
     if (idx !== -1) positions.splice(idx, 1);
+    if (editId === id) resetEditor();
   }
 
   let totalNet = $derived(positions.reduce((sum, p) => sum + p.details.netTotal, 0));
   let totalVat = $derived(positions.reduce((sum, p) => sum + p.details.vatAmount, 0));
+  let totalCourt = $derived(positions.reduce((sum, p) => sum + p.details.courtFee, 0));
   let totalGross = $derived(positions.reduce((sum, p) => sum + p.details.grossTotal, 0));
 
   async function copyToClipboard() {
-    const date = new Date().toLocaleDateString('de-LI');
-    const padNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).padStart(12, ' ');
-    const line = "--------------------------------------------------------";
-
-    let text = `KOSTENNOTE\nDatum: ${date}\n${line}\n\n`;
-
+    const padNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 }).padStart(12, ' ');
+    let text = `KOSTENNOTE\n--------------------------------\n`;
     positions.forEach((p, i) => {
-      text += `${i + 1}. ${p.label}\n`;
-      if(p.description) text += `   (${p.description})\n`;
-      
-      let baseTxt = "Basisgebühr";
-      if (p.details.config.isTimeBased) baseTxt = `Honorar (${p.multiplier} Einh.)`;
-      else if (p.multiplier > 1) baseTxt = `Honorar (${p.multiplier}x)`;
-      
-      text += `   ${baseTxt.padEnd(28, '.')} ${padNum(p.details.baseFee)}\n`;
-      
-      if (p.details.config.hasUnitRate) {
-        text += `   + EHS (${p.details.config.ehsLabel}) .................... ${padNum(p.details.unitRateAmount)}\n`;
-      }
-      if (p.details.config.hasSurcharge) {
-        text += `   + Genossenzuschlag (10%) ............... ${padNum(p.details.surchargeAmount)}\n`;
-      }
-      text += `   Zwischensumme Netto .................... ${padNum(p.details.netTotal)}\n`;
-      text += `\n`;
+        text += `${i+1}. ${p.label}\n`;
+        text += `   Honorar .................... ${padNum(p.details.netTotal)}\n`;
+        if(p.details.courtFee > 0) text += `   GKG (${p.details.config.courtFeeLabel}) ....... ${padNum(p.details.courtFee)}\n`;
     });
-
-    text += `${line}\n`;
-    text += `TOTAL NETTO ............................... ${padNum(totalNet)}\n`;
-    if (totalVat > 0) text += `+ USt (8.1%) .............................. ${padNum(totalVat)}\n`;
-    else text += `(USt-frei / Export) ....................... ${padNum(0)}\n`;
-    
-    text += `${line}\n`;
-    text += `GESAMTBETRAG .............................. ${padNum(totalGross)}\n`;
-
-    try { await navigator.clipboard.writeText(text); copied = true; setTimeout(() => copied = false, 2000); } 
-    catch (err) { alert('Clipboard Error'); }
+    text += `--------------------------------\n`;
+    text += `Netto ........................ ${padNum(totalNet)}\n`;
+    text += `USt .......................... ${padNum(totalVat)}\n`;
+    text += `Gerichtskosten ............... ${padNum(totalCourt)}\n`;
+    text += `TOTAL ........................ ${padNum(totalGross)}`;
+    await navigator.clipboard.writeText(text);
+    copied = true; setTimeout(() => copied = false, 2000);
   }
 </script>
 
-<div class="max-w-6xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
+<div class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6">
   
-  <!-- LEFT: EDITOR -->
-  <div class="lg:col-span-4 space-y-6">
-    <div class="card h-fit sticky top-4 overflow-visible z-20">
-      <h2 class="text-xl font-semibold text-legal-gold border-b border-legal-700 pb-2 mb-4">
-        Leistung erfassen
+  <!-- EDITOR -->
+  <div class="lg:col-span-5 space-y-6">
+    <div class="card h-fit sticky top-4 z-20 border-t-4 {editId ? 'border-t-orange-500' : 'border-t-legal-gold'}">
+      <h2 class="text-xl font-semibold text-white border-b border-legal-700 pb-2 mb-4 flex justify-between items-center">
+        <span>{editId ? 'Position bearbeiten' : 'Leistung erfassen'}</span>
+        {#if editId}<button onclick={resetEditor} class="text-xs text-slate-400 hover:text-white">Abbrechen</button>{/if}
       </h2>
       
       <div class="space-y-4">
-        
-        <!-- ACTION SEARCH -->
+        <!-- SEARCH -->
         <div class="relative">
-          <label class="label-text" for="search">Was wurde gemacht?</label>
-          <input 
-            id="search" type="text" bind:value={searchQuery}
-            onfocus={() => showDropdown = true}
-            onblur={() => setTimeout(() => showDropdown = false, 200)}
-            placeholder="z.B. Klage, Telefonat, Brief..."
-            class="input-field" autocomplete="off"
-          />
-          {#if showDropdown && filteredActions.length > 0}
+          <label class="label-text" for="search">Leistung</label>
+          <input id="search" type="text" bind:value={searchQuery} onfocus={() => showDropdown = true} placeholder="Suche..." class="input-field" autocomplete="off" />
+          {#if showDropdown && (searchQuery || filteredActions.length > 0)}
             <ul class="absolute top-full left-0 right-0 mt-1 bg-legal-800 border border-legal-700 rounded-lg shadow-xl max-h-80 overflow-y-auto z-50">
               {#each filteredActions as item}
                 <li>
                   <button class="w-full text-left p-3 hover:bg-legal-700 text-sm text-slate-200 transition-colors cursor-pointer border-b border-legal-700/50" onmousedown={() => selectAction(item)}>
                     <div class="font-semibold text-legal-gold">{item.label}</div>
-                    <div class="text-xs text-slate-500 mt-0.5">{item.description}</div>
+                    <div class="text-xs text-slate-500 font-mono">{item.description}</div>
                   </button>
                 </li>
               {/each}
@@ -160,123 +175,101 @@
           {/if}
         </div>
 
-        <!-- LABEL EDIT -->
+        <!-- DETAILS -->
         <div>
-          <label class="label-text" for="label">Bezeichnung (auf Rechnung)</label>
-          <div class="relative">
-            <input id="label" type="text" bind:value={editLabel} placeholder="Automatisch..." class="input-field" />
-            {#if editDesc}
-                <div class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] bg-legal-700 text-slate-400 px-1.5 py-0.5 rounded border border-legal-600 cursor-help" title={editDesc}>
-                    § Info
-                </div>
+            <label class="label-text" for="label">Bezeichnung</label>
+            <input id="label" type="text" bind:value={editLabel} class="input-field" />
+            {#if editDesc}<div class="text-[10px] text-slate-500 mt-1">{editDesc}</div>{/if}
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="label-text" for="val">Streitwert</label>
+                <input id="val" type="number" bind:value={editValue} class="input-field font-mono" />
+            </div>
+            {#if isTimeBased || isQuantityBased}
+            <div>
+                <label class="label-text" for="mult">{isTimeBased ? 'Einh.' : 'Anz.'}</label>
+                <input id="mult" type="number" bind:value={editMultiplier} class="input-field font-mono" step="0.5" />
+            </div>
             {/if}
-          </div>
         </div>
 
-        <div>
-          <label class="label-text" for="value">Streitwert (CHF)</label>
-          <input id="value" type="number" bind:value={editValue} class="input-field font-mono text-lg" min="0" step="100" />
-        </div>
-
-        {#if isTimeBased || isQuantityBased}
-            <div class="bg-legal-700/30 p-2 rounded border border-legal-600/50">
-                <label class="label-text text-legal-accent" for="mult">
-                    {isTimeBased ? 'Anzahl halbe Stunden' : 'Anzahl (Stück)'}
-                </label>
-                <input id="mult" type="number" bind:value={editMultiplier} class="input-field font-mono" min="0.5" step="0.5" />
-            </div>
-        {/if}
-
+        <!-- OPTIONS -->
         <div class="space-y-3 pt-2 bg-legal-900/50 p-3 rounded border border-legal-700/50">
-          <label class="flex items-center space-x-3 cursor-pointer group {isAncillary ? 'opacity-75' : ''}">
+          <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editUnitRate} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <div class="flex flex-col">
-                <span class="text-sm text-slate-300">Einheitssatz (Art. 23)</span>
-                {#if isAncillary}<span class="text-[10px] text-slate-500">Normalerweise deaktiviert</span>{/if}
-            </div>
+            <span class="text-sm text-slate-300">Einheitssatz</span>
           </label>
-          
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editSurcharge} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <span class="text-sm text-slate-300">Genossenzuschlag (10%)</span>
+            <span class="text-sm text-slate-300">Genossenzuschlag</span>
           </label>
-
+          
           <div class="h-px bg-legal-700/50 my-1"></div>
+          
           <label class="flex items-center space-x-3 cursor-pointer group">
-            <input type="checkbox" bind:checked={editForeign} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <span class="text-sm text-orange-200 font-medium">Mandant im Ausland (0% USt)</span>
+            <input type="checkbox" bind:checked={editIncludeCourtFee} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
+            <span class="text-sm text-white font-medium">Gerichtsgebühr (GGG)</span>
           </label>
+
+          {#if editIncludeCourtFee}
+            <div class="pl-7 space-y-2">
+                <select bind:value={editGkgColumn} class="input-field text-xs py-1">
+                    {#each Object.entries(GKG_LABELS) as [key, label]}
+                        <option value={key}>{label}</option>
+                    {/each}
+                </select>
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" bind:checked={editIsAppeal} class="w-3 h-3 rounded border-slate-600 bg-slate-800">
+                    <span class="text-xs text-slate-400">Rechtsmittel (2x Gebühr)</span>
+                </label>
+            </div>
+          {/if}
         </div>
 
-        <div class="text-right text-xs text-slate-500 pt-2 border-t border-legal-700">
-          Vorschau: {formatCurrency(previewResult.grossTotal)}
+        <div class="flex justify-between items-center pt-4 border-t border-legal-700">
+            <div class="text-xs text-slate-500">Total: <span class="text-white font-bold">{formatCurrency(previewResult.grossTotal)}</span></div>
+            <button onclick={savePosition} class="btn-primary py-2 px-6 text-sm">{editId ? 'Speichern' : 'Hinzufügen'}</button>
         </div>
-
-        <button onclick={addPosition} class="btn-primary w-full flex items-center justify-center gap-2">
-          <span>+</span> Hinzufügen
-        </button>
       </div>
     </div>
   </div>
 
-  <!-- RIGHT: TABLE -->
-  <div class="lg:col-span-8 flex flex-col h-full z-10">
-    <div class="card flex-grow bg-gradient-to-br from-legal-800 to-legal-900 border-legal-gold/30 relative flex flex-col">
-      <div class="flex justify-between items-end mb-6 border-b border-legal-700 pb-4">
-        <div><h2 class="text-2xl font-bold text-white">Leistungsaufstellung</h2><p class="text-slate-400 text-sm">{positions.length} Positionen</p></div>
-        {#if positions.length > 0}<button onclick={() => positions = []} class="text-xs text-red-400 hover:text-red-300 underline cursor-pointer">Alle löschen</button>{/if}
+  <!-- RIGHT: LIST -->
+  <div class="lg:col-span-7 flex flex-col h-full z-10">
+    <div class="card flex-grow bg-gradient-to-br from-legal-800 to-legal-900 border-legal-gold/30 flex flex-col p-0 overflow-hidden">
+      <div class="p-4 border-b border-legal-700 bg-legal-800/80 flex justify-between items-center">
+        <h2 class="font-bold text-white">Leistungsaufstellung</h2>
+        {#if positions.length > 0}<button onclick={() => positions = []} class="text-xs text-red-400 hover:underline">Reset</button>{/if}
       </div>
 
-      <div class="flex-grow space-y-4 overflow-y-auto max-h-[500px] pr-2 mb-6">
-        {#if positions.length === 0}
-          <div class="text-center py-12 text-slate-500 border-2 border-dashed border-legal-700 rounded-lg"><p>Noch keine Leistungen erfasst.</p></div>
-        {:else}
-            {#each positions as pos, index (pos.id)}
-                <div class="bg-legal-900/50 rounded-lg p-4 border border-legal-700 hover:border-legal-600 transition-colors group relative">
-                    <button onclick={() => removePosition(pos.id)} class="absolute top-2 right-2 text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">✕</button>
-                    
-                    <div class="flex justify-between items-start mb-2 pr-6">
-                        <div>
-                            <span class="bg-legal-700 text-white text-[10px] px-1.5 py-0.5 rounded mr-2">#{index + 1}</span>
-                            <h3 class="font-semibold text-white inline">{pos.label}</h3>
-                            
-                            <!-- Tooltip Info -->
-                            {#if pos.description}
-                                <span class="text-[10px] text-slate-500 ml-2 border border-slate-700 px-1 rounded" title="Rechtsgrundlage">{pos.description}</span>
-                            {/if}
-
-                            <div class="text-xs text-slate-400 mt-1">
-                                {formatCurrency(pos.value)} • {TP_LABELS[pos.type]}
-                                {#if pos.multiplier > 1} <span class="text-legal-accent ml-2">x {pos.multiplier}</span> {/if}
-                            </div>
-                        </div>
-                        <div class="text-right font-mono font-medium text-white">{formatCurrency(pos.details.netTotal)}</div>
+      <div class="flex-grow overflow-y-auto p-4 space-y-3">
+        {#each positions as pos (pos.id)}
+            <div class="bg-legal-900/40 rounded border border-legal-700 p-3 hover:border-legal-500 transition-colors cursor-pointer group relative {editId === pos.id ? 'ring-1 ring-orange-500' : ''}" onclick={() => editPosition(pos)}>
+                <button onclick={(e) => { e.stopPropagation(); removePosition(pos.id); }} class="absolute top-2 right-2 text-slate-600 hover:text-red-500 p-1">✕</button>
+                <div class="flex justify-between items-start pr-8">
+                    <div>
+                        <div class="font-medium text-white text-sm">{pos.label}</div>
+                        {#if pos.description}<div class="text-[10px] text-slate-500 font-mono mt-0.5">{pos.description}</div>{/if}
                     </div>
-                    
-                    <div class="text-xs text-slate-500 pl-8 space-y-1 border-l-2 border-legal-700/30 ml-2">
-                        <div>Basis: {formatCurrency(pos.details.baseFee)}</div>
-                        {#if pos.details.config.hasUnitRate} <div>+ EHS ({pos.details.config.ehsLabel}): {formatCurrency(pos.details.unitRateAmount)}</div>{/if}
-                        {#if pos.details.config.hasSurcharge} <div class="text-legal-gold">+ Genossenzuschlag: {formatCurrency(pos.details.surchargeAmount)}</div>{/if}
-                    </div>
+                    <div class="text-right"><div class="font-mono text-sm text-white">{formatCurrency(pos.details.netTotal)}</div></div>
                 </div>
-            {/each}
-        {/if}
+                {#if pos.details.courtFee > 0}
+                    <div class="mt-2 text-[10px] text-blue-300 bg-blue-900/20 px-2 py-1 rounded w-fit">⚖️ GKG: {formatCurrency(pos.details.courtFee)}</div>
+                {/if}
+            </div>
+        {/each}
+        {#if positions.length === 0}<div class="text-center py-10 text-slate-600 text-sm italic">Keine Positionen.</div>{/if}
       </div>
 
-      <div class="mt-auto bg-legal-900 p-4 rounded-lg border border-legal-700">
-        <div class="space-y-1 text-sm font-mono">
-          <div class="flex justify-between text-slate-400"><span>Summe Netto</span><span>{formatCurrency(totalNet)}</span></div>
-          {#if totalVat > 0}
-            <div class="flex justify-between text-slate-400"><span>USt (8.1%)</span><span>{formatCurrency(totalVat)}</span></div>
-          {:else}
-            <div class="flex justify-between text-orange-400/70"><span>USt (0%)</span><span>0.00 CHF</span></div>
-          {/if}
-          <div class="h-px bg-legal-gold/50 my-2"></div>
-          <div class="flex justify-between text-xl font-bold text-legal-gold"><span>GESAMT</span><span>{formatCurrency(totalGross)}</span></div>
-        </div>
-        <button onclick={copyToClipboard} disabled={positions.length === 0} class="w-full mt-4 py-3 px-4 rounded font-semibold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer {copied ? 'bg-green-600 text-white' : 'bg-legal-accent hover:bg-blue-600 text-white disabled:opacity-50'}">
-            {copied ? '✓ Kopiert!' : '📋 Tabelle für Word kopieren'}
-        </button>
+      <div class="bg-legal-900 p-4 border-t border-legal-700 space-y-1 font-mono text-sm">
+        <div class="flex justify-between text-slate-400"><span>Netto Honorar</span><span>{formatCurrency(totalNet)}</span></div>
+        <div class="flex justify-between text-slate-400"><span>USt (8.1%)</span><span>{formatCurrency(totalVat)}</span></div>
+        {#if totalCourt > 0}<div class="flex justify-between text-blue-400"><span>Gerichtskosten</span><span>{formatCurrency(totalCourt)}</span></div>{/if}
+        <div class="h-px bg-legal-700 my-2"></div>
+        <div class="flex justify-between text-lg font-bold text-legal-gold"><span>TOTAL</span><span>{formatCurrency(totalGross)}</span></div>
+        <button onclick={copyToClipboard} disabled={positions.length === 0} class="w-full mt-4 py-2 bg-legal-700 hover:bg-legal-600 text-white rounded text-center text-xs uppercase tracking-wide font-bold disabled:opacity-50">{copied ? 'Kopiert!' : 'Kopieren'}</button>
       </div>
     </div>
   </div>
