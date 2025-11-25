@@ -4,7 +4,7 @@
   
   let pin = $state('');
   let error = $state('');
-  const CORRECT_PIN = '1234';
+  const CORRECT_PIN = '5555';
 
   function handleLogin() {
     if (pin === CORRECT_PIN) {

@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { calculateFees, formatCurrency, TP_LABELS, SEARCH_OPTIONS, type TarifPosten, type Position, type SearchOption } from '../logic';
+  import { calculateFees, formatCurrency, ACTION_ITEMS, TP_LABELS, type TarifPosten, type Position, type ActionItem } from '../logic';
 
+  // --- EDITOR STATE ---
   let editValue = $state(50000);
   let editType = $state<TarifPosten>('TP3A');
   let editMultiplier = $state(1);
@@ -8,57 +9,70 @@
   let editSurcharge = $state(false);
   let editForeign = $state(false);
   let editLabel = $state('');
+  let editDesc = $state(''); // Rechtsgrundlage
 
-  let searchQuery = $state('Klage / Zivilprozess (TP 3A)');
+  // --- SEARCH ---
+  let searchQuery = $state('');
   let showDropdown = $state(false);
   
-  let filteredOptions = $derived(
-    SEARCH_OPTIONS.filter(opt => {
+  // Verbesserte Suche über Keywords & Labels
+  let filteredActions = $derived(
+    ACTION_ITEMS.filter(item => {
+      if (!searchQuery) return false; // Erst zeigen wenn man tippt
       const q = searchQuery.toLowerCase();
-      return opt.label.toLowerCase().includes(q) || opt.keywords.some(k => k.includes(q));
+      return item.label.toLowerCase().includes(q) || 
+             item.keywords.some(k => k.includes(q));
     })
   );
 
+  // --- HELPERS ---
   let isTimeBased = $derived(['TP7', 'TP8', 'TP9'].includes(editType));
   let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType));
+  
+  // Prüfen, ob EHS sinnvoll ist (Hauptleistung vs. Nebenleistung)
+  // Art 23: Nebenleistungen (5,6,8) haben EHS nur, wenn sie Hauptleistung ersetzen.
   let isAncillary = $derived(['TP5', 'TP6', 'TP7', 'TP8', 'TP9'].includes(editType));
 
   $effect(() => {
+    // Auto-EHS: An bei Hauptleistungen, Aus bei Nebenleistungen
     if (isAncillary) editUnitRate = false;
     else editUnitRate = true;
+
     if (!isTimeBased && !isQuantityBased) editMultiplier = 1;
   });
 
   let previewResult = $derived(calculateFees(editValue, editType, editMultiplier, editUnitRate, editSurcharge, editForeign));
 
+  // --- ACTIONS ---
   let positions = $state<Position[]>([]);
   let copied = $state(false);
 
-  function selectOption(opt: SearchOption) {
-    editType = opt.id;
-    searchQuery = opt.label;
+  function selectAction(item: ActionItem) {
+    editType = item.id;
+    searchQuery = ''; // Reset Search
     showDropdown = false;
+    editLabel = item.label; // Auto-Fill Label
+    editDesc = item.description; // Setze Tooltip Info
   }
 
   function addPosition() {
-    let autoLabel = editLabel.trim();
-    if (!autoLabel) {
-        const base = TP_LABELS[editType];
-        if (isTimeBased) autoLabel = `${base} (${editMultiplier} Einh.)`;
-        else if (editMultiplier > 1) autoLabel = `${base} (${editMultiplier}x)`;
-        else autoLabel = base;
-    }
+    let finalLabel = editLabel.trim();
+    if (!finalLabel) finalLabel = TP_LABELS[editType];
 
     const newPos: Position = {
       id: crypto.randomUUID(),
-      label: autoLabel,
+      label: finalLabel,
+      description: editDesc,
       value: editValue,
       multiplier: editMultiplier,
       type: editType,
       details: previewResult
     };
     positions.push(newPos);
+    
+    // Reset aber behalte Werte für schnelles Arbeiten
     editLabel = '';
+    editDesc = ''; 
     if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
@@ -80,29 +94,29 @@
 
     positions.forEach((p, i) => {
       text += `${i + 1}. ${p.label}\n`;
+      if(p.description) text += `   (${p.description})\n`;
       
       let baseTxt = "Basisgebühr";
       if (p.details.config.isTimeBased) baseTxt = `Honorar (${p.multiplier} Einh.)`;
       else if (p.multiplier > 1) baseTxt = `Honorar (${p.multiplier}x)`;
       
       text += `   ${baseTxt.padEnd(28, '.')} ${padNum(p.details.baseFee)}\n`;
+      
       if (p.details.config.hasUnitRate) {
-        const ehsLabel = p.value <= 15000 ? "50%" : "40%";
-        text += `   + EHS (${ehsLabel}) .......................... ${padNum(p.details.unitRateAmount)}\n`;
+        text += `   + EHS (${p.details.config.ehsLabel}) .................... ${padNum(p.details.unitRateAmount)}\n`;
       }
       if (p.details.config.hasSurcharge) {
         text += `   + Genossenzuschlag (10%) ............... ${padNum(p.details.surchargeAmount)}\n`;
       }
       text += `   Zwischensumme Netto .................... ${padNum(p.details.netTotal)}\n`;
-      if (p.details.config.isForeign) {
-        text += `   (USt-frei: Mandant Ausland)\n`;
-      }
       text += `\n`;
     });
 
     text += `${line}\n`;
     text += `TOTAL NETTO ............................... ${padNum(totalNet)}\n`;
-    text += `+ USt (8.1%) .............................. ${padNum(totalVat)}\n`;
+    if (totalVat > 0) text += `+ USt (8.1%) .............................. ${padNum(totalVat)}\n`;
+    else text += `(USt-frei / Export) ....................... ${padNum(0)}\n`;
+    
     text += `${line}\n`;
     text += `GESAMTBETRAG .............................. ${padNum(totalGross)}\n`;
 
@@ -117,35 +131,46 @@
   <div class="lg:col-span-4 space-y-6">
     <div class="card h-fit sticky top-4 overflow-visible z-20">
       <h2 class="text-xl font-semibold text-legal-gold border-b border-legal-700 pb-2 mb-4">
-        Position hinzufügen
+        Leistung erfassen
       </h2>
       
       <div class="space-y-4">
         
+        <!-- ACTION SEARCH -->
         <div class="relative">
-          <label class="label-text" for="search">Leistungstyp (Suche)</label>
+          <label class="label-text" for="search">Was wurde gemacht?</label>
           <input 
-            id="search" type="text" value={searchQuery}
-            oninput={(e) => { searchQuery = e.currentTarget.value; showDropdown = true; }}
+            id="search" type="text" bind:value={searchQuery}
             onfocus={() => showDropdown = true}
             onblur={() => setTimeout(() => showDropdown = false, 200)}
-            placeholder="z.B. 'scheid', 'klage', 'brief'"
+            placeholder="z.B. Klage, Telefonat, Brief..."
             class="input-field" autocomplete="off"
           />
-          {#if showDropdown}
-            <ul class="absolute top-full left-0 right-0 mt-1 bg-legal-800 border border-legal-700 rounded-lg shadow-xl max-h-60 overflow-y-auto z-50">
-              {#each filteredOptions as opt}
-                <li><button class="w-full text-left p-3 hover:bg-legal-700 text-sm text-slate-200 transition-colors cursor-pointer" onmousedown={() => selectOption(opt)}>{opt.label}</button></li>
-              {:else}
-                <li class="p-3 text-sm text-slate-500">Keine Treffer</li>
+          {#if showDropdown && filteredActions.length > 0}
+            <ul class="absolute top-full left-0 right-0 mt-1 bg-legal-800 border border-legal-700 rounded-lg shadow-xl max-h-80 overflow-y-auto z-50">
+              {#each filteredActions as item}
+                <li>
+                  <button class="w-full text-left p-3 hover:bg-legal-700 text-sm text-slate-200 transition-colors cursor-pointer border-b border-legal-700/50" onmousedown={() => selectAction(item)}>
+                    <div class="font-semibold text-legal-gold">{item.label}</div>
+                    <div class="text-xs text-slate-500 mt-0.5">{item.description}</div>
+                  </button>
+                </li>
               {/each}
             </ul>
           {/if}
         </div>
 
+        <!-- LABEL EDIT -->
         <div>
-          <label class="label-text" for="label">Bezeichnung (Optional)</label>
-          <input id="label" type="text" bind:value={editLabel} placeholder="Zusatztext..." class="input-field" />
+          <label class="label-text" for="label">Bezeichnung (auf Rechnung)</label>
+          <div class="relative">
+            <input id="label" type="text" bind:value={editLabel} placeholder="Automatisch..." class="input-field" />
+            {#if editDesc}
+                <div class="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] bg-legal-700 text-slate-400 px-1.5 py-0.5 rounded border border-legal-600 cursor-help" title={editDesc}>
+                    § Info
+                </div>
+            {/if}
+          </div>
         </div>
 
         <div>
@@ -156,7 +181,7 @@
         {#if isTimeBased || isQuantityBased}
             <div class="bg-legal-700/30 p-2 rounded border border-legal-600/50">
                 <label class="label-text text-legal-accent" for="mult">
-                    {isTimeBased ? 'Anzahl halbe Stunden / Einheiten' : 'Anzahl (Stück)'}
+                    {isTimeBased ? 'Anzahl halbe Stunden' : 'Anzahl (Stück)'}
                 </label>
                 <input id="mult" type="number" bind:value={editMultiplier} class="input-field font-mono" min="0.5" step="0.5" />
             </div>
@@ -165,10 +190,10 @@
         <div class="space-y-3 pt-2 bg-legal-900/50 p-3 rounded border border-legal-700/50">
           <label class="flex items-center space-x-3 cursor-pointer group {isAncillary ? 'opacity-75' : ''}">
             <input type="checkbox" bind:checked={editUnitRate} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <span class="text-sm text-slate-300">
-                Einheitssatz (Art. 23)
-                {#if isAncillary}<span class="text-xs text-slate-500 block ml-7">(Bei Nebenleistungen unüblich)</span>{/if}
-            </span>
+            <div class="flex flex-col">
+                <span class="text-sm text-slate-300">Einheitssatz (Art. 23)</span>
+                {#if isAncillary}<span class="text-[10px] text-slate-500">Normalerweise deaktiviert</span>{/if}
+            </div>
           </label>
           
           <label class="flex items-center space-x-3 cursor-pointer group">
@@ -184,11 +209,11 @@
         </div>
 
         <div class="text-right text-xs text-slate-500 pt-2 border-t border-legal-700">
-          Vorschau: {formatCurrency(previewResult.grossTotal)} Brutto
+          Vorschau: {formatCurrency(previewResult.grossTotal)}
         </div>
 
         <button onclick={addPosition} class="btn-primary w-full flex items-center justify-center gap-2">
-          <span>+</span> Position hinzufügen
+          <span>+</span> Hinzufügen
         </button>
       </div>
     </div>
@@ -204,27 +229,34 @@
 
       <div class="flex-grow space-y-4 overflow-y-auto max-h-[500px] pr-2 mb-6">
         {#if positions.length === 0}
-          <div class="text-center py-12 text-slate-500 border-2 border-dashed border-legal-700 rounded-lg"><p>Liste leer.</p></div>
+          <div class="text-center py-12 text-slate-500 border-2 border-dashed border-legal-700 rounded-lg"><p>Noch keine Leistungen erfasst.</p></div>
         {:else}
             {#each positions as pos, index (pos.id)}
                 <div class="bg-legal-900/50 rounded-lg p-4 border border-legal-700 hover:border-legal-600 transition-colors group relative">
                     <button onclick={() => removePosition(pos.id)} class="absolute top-2 right-2 text-slate-600 hover:text-red-400 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">✕</button>
+                    
                     <div class="flex justify-between items-start mb-2 pr-6">
                         <div>
                             <span class="bg-legal-700 text-white text-[10px] px-1.5 py-0.5 rounded mr-2">#{index + 1}</span>
                             <h3 class="font-semibold text-white inline">{pos.label}</h3>
-                            <div class="text-xs text-slate-400 mt-0.5">
-                                Streitwert: {formatCurrency(pos.value)} • {TP_LABELS[pos.type]}
+                            
+                            <!-- Tooltip Info -->
+                            {#if pos.description}
+                                <span class="text-[10px] text-slate-500 ml-2 border border-slate-700 px-1 rounded" title="Rechtsgrundlage">{pos.description}</span>
+                            {/if}
+
+                            <div class="text-xs text-slate-400 mt-1">
+                                {formatCurrency(pos.value)} • {TP_LABELS[pos.type]}
                                 {#if pos.multiplier > 1} <span class="text-legal-accent ml-2">x {pos.multiplier}</span> {/if}
                             </div>
                         </div>
                         <div class="text-right font-mono font-medium text-white">{formatCurrency(pos.details.netTotal)}</div>
                     </div>
-                    <div class="text-xs text-slate-500 pl-8 space-y-1">
+                    
+                    <div class="text-xs text-slate-500 pl-8 space-y-1 border-l-2 border-legal-700/30 ml-2">
                         <div>Basis: {formatCurrency(pos.details.baseFee)}</div>
-                        {#if pos.details.config.hasUnitRate} <div>+ EHS: {formatCurrency(pos.details.unitRateAmount)}</div>{/if}
+                        {#if pos.details.config.hasUnitRate} <div>+ EHS ({pos.details.config.ehsLabel}): {formatCurrency(pos.details.unitRateAmount)}</div>{/if}
                         {#if pos.details.config.hasSurcharge} <div class="text-legal-gold">+ Genossenzuschlag: {formatCurrency(pos.details.surchargeAmount)}</div>{/if}
-                        {#if pos.details.config.isForeign} <div class="text-orange-300">⚠ USt-frei (Ausland)</div> {/if}
                     </div>
                 </div>
             {/each}
@@ -234,7 +266,11 @@
       <div class="mt-auto bg-legal-900 p-4 rounded-lg border border-legal-700">
         <div class="space-y-1 text-sm font-mono">
           <div class="flex justify-between text-slate-400"><span>Summe Netto</span><span>{formatCurrency(totalNet)}</span></div>
-          <div class="flex justify-between text-slate-400"><span>USt (8.1%)</span><span>{formatCurrency(totalVat)}</span></div>
+          {#if totalVat > 0}
+            <div class="flex justify-between text-slate-400"><span>USt (8.1%)</span><span>{formatCurrency(totalVat)}</span></div>
+          {:else}
+            <div class="flex justify-between text-orange-400/70"><span>USt (0%)</span><span>0.00 CHF</span></div>
+          {/if}
           <div class="h-px bg-legal-gold/50 my-2"></div>
           <div class="flex justify-between text-xl font-bold text-legal-gold"><span>GESAMT</span><span>{formatCurrency(totalGross)}</span></div>
         </div>
