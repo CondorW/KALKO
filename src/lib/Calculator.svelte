@@ -14,7 +14,8 @@
   let editMultiplier = $state(1);
   let editUnitRate = $state(true);
   let editSurcharge = $state(false);
-  let editForeign = $state(false);
+  // NEU: Statt editForeign nutzen wir explizit editVat (USt verrechnet)
+  let editVat = $state(true); 
   let editIncludeCourtFee = $state(false);
   
   let editLabel = $state('');
@@ -34,15 +35,15 @@
 
   let isTimeBased = $derived(['TP7', 'TP8', 'TP9'].includes(editType));
   let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType));
-  let isAncillary = $derived(['TP5', 'TP6', 'TP7', 'TP8', 'TP9'].includes(editType));
+  
+  // Sichere Werte für Vorschau
+  let safeValue = $derived(Math.max(0, editValue));
+  let safeMultiplier = $derived(Math.max(0, editMultiplier));
 
   // Preview Logic
-  // FIX: Wir stellen sicher, dass hier keine negativen Werte reinkommen, 
-  // obwohl logic.ts das auch noch mal abfängt.
-  let safeValue = $derived(Math.max(0, editValue));
-  
+  // Wir übergeben !editVat als 'isForeign', da isForeign = true bedeutet "Keine USt"
   let previewResult = $derived(calculateFees(
-    safeValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
+    safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, editSurcharge, !editVat, editIncludeCourtFee
   ));
 
   let positions = $state<Position[]>([]);
@@ -71,7 +72,7 @@
   function savePosition() {
     let finalLabel = editLabel.trim() || TP_LABELS[editType];
     const newDetails = calculateFees(
-        safeValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
+        safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, editSurcharge, !editVat, editIncludeCourtFee
     );
 
     const posData: Position = {
@@ -79,7 +80,7 @@
         label: finalLabel,
         description: editDesc,
         value: safeValue,
-        multiplier: editMultiplier,
+        multiplier: safeMultiplier,
         type: editType,
         gkgColumn: editGkgColumn,
         isAppeal: editIsAppeal,
@@ -105,7 +106,8 @@
     editMultiplier = pos.multiplier;
     editUnitRate = pos.details.config.hasUnitRate;
     editSurcharge = pos.details.config.hasSurcharge;
-    editForeign = pos.details.config.isForeign;
+    // Mapping: isForeign -> !editVat
+    editVat = !pos.details.config.isForeign;
     editIncludeCourtFee = pos.details.courtFee > 0;
     editLabel = pos.label;
     editDesc = pos.description || '';
@@ -118,6 +120,7 @@
     editDesc = '';
     searchQuery = '';
     editIncludeCourtFee = false;
+    editVat = true; // Reset auf "USt verrechnet"
     if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
@@ -125,6 +128,13 @@
     const idx = positions.findIndex(p => p.id === id);
     if (idx !== -1) positions.splice(idx, 1);
     if (editId === id) resetEditor();
+  }
+
+  // Hilfsfunktion: Minus-Taste blockieren
+  function blockNegative(e: KeyboardEvent) {
+    if (e.key === '-' || e.key === 'e') {
+      e.preventDefault();
+    }
   }
 
   let totalNet = $derived(positions.reduce((sum, p) => sum + p.details.netTotal, 0));
@@ -189,33 +199,79 @@
         <div class="grid grid-cols-2 gap-4">
             <div>
                 <label class="label-text" for="val">Streitwert</label>
-                <!-- FIX 1: Input Type restriction -->
-                <input id="val" type="number" min="0" bind:value={editValue} class="input-field font-mono" />
+                <!-- FRONTEND VALIDATION: min="0", blockiert Minus-Taste -->
+                <input 
+                  id="val" 
+                  type="number" 
+                  min="0" 
+                  onkeydown={blockNegative}
+                  bind:value={editValue} 
+                  class="input-field font-mono" 
+                />
             </div>
             {#if isTimeBased || isQuantityBased}
             <div>
                 <label class="label-text" for="mult">{isTimeBased ? 'Einh.' : 'Anz.'}</label>
-                <input id="mult" type="number" min="0.5" step="0.5" bind:value={editMultiplier} class="input-field font-mono" />
+                <!-- FRONTEND VALIDATION: min="0", blockiert Minus-Taste -->
+                <input 
+                  id="mult" 
+                  type="number" 
+                  min="0" 
+                  step="0.5" 
+                  onkeydown={blockNegative}
+                  bind:value={editMultiplier} 
+                  class="input-field font-mono" 
+                />
             </div>
             {/if}
         </div>
 
         <!-- OPTIONS -->
         <div class="space-y-3 pt-2 bg-legal-900/50 p-3 rounded border border-legal-700/50">
+          <!-- EHS CHECKBOX MIT VORSCHAU -->
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editUnitRate} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <span class="text-sm text-slate-300">Einheitssatz</span>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-300">Einheitssatz</span>
+              {#if editUnitRate}
+                <span class="text-xs text-legal-gold font-mono bg-legal-gold/10 px-1 rounded">
+                  {previewResult.config.ehsLabel} <span class="opacity-60">|</span> {formatCurrency(previewResult.unitRateAmount)}
+                </span>
+              {/if}
+            </div>
           </label>
+
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editSurcharge} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
             <span class="text-sm text-slate-300">Genossenzuschlag</span>
           </label>
           
+          <!-- UST CHECKBOX MIT VORSCHAU -->
+          <label class="flex items-center space-x-3 cursor-pointer group">
+            <input type="checkbox" bind:checked={editVat} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-300">USt verrechnet</span>
+              {#if editVat}
+                <span class="text-xs text-blue-300 font-mono bg-blue-500/10 px-1 rounded">
+                  8.1% <span class="opacity-60">|</span> {formatCurrency(previewResult.vatAmount)}
+                </span>
+              {/if}
+            </div>
+          </label>
+          
           <div class="h-px bg-legal-700/50 my-1"></div>
           
+          <!-- GKG CHECKBOX MIT VORSCHAU -->
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editIncludeCourtFee} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <span class="text-sm text-white font-medium">Gerichtsgebühr (GGG)</span>
+            <div class="flex items-center gap-2">
+                <span class="text-sm text-white font-medium">Gerichtsgebühr (GGG)</span>
+                {#if editIncludeCourtFee}
+                    <span class="text-xs text-blue-300 font-mono bg-blue-500/10 px-1 rounded">
+                        {previewResult.config.courtFeeLabel || 'GKG'} <span class="opacity-60">|</span> {formatCurrency(previewResult.courtFee)}
+                    </span>
+                {/if}
+            </div>
           </label>
 
           {#if editIncludeCourtFee}
