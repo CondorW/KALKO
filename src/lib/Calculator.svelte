@@ -8,8 +8,8 @@
   // Inputs
   let editValue = $state(50000);
   let editType = $state<TarifPosten>('TP3A');
-  let editGkgColumn = $state<GKG_COLUMN | undefined>('zivil');
-  let editIsAppeal = $state(false);
+  let editGkgColumn = $state<GKG_COLUMN | undefined>('zivil'); // Standard Zivil
+  let editIsAppeal = $state(false); // Rechtsmittel?
   
   let editMultiplier = $state(1);
   let editUnitRate = $state(true);
@@ -37,8 +37,12 @@
   let isAncillary = $derived(['TP5', 'TP6', 'TP7', 'TP8', 'TP9'].includes(editType));
 
   // Preview Logic
+  // FIX: Wir stellen sicher, dass hier keine negativen Werte reinkommen, 
+  // obwohl logic.ts das auch noch mal abfängt.
+  let safeValue = $derived(Math.max(0, editValue));
+  
   let previewResult = $derived(calculateFees(
-    editValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
+    safeValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
   ));
 
   let positions = $state<Position[]>([]);
@@ -48,8 +52,8 @@
 
   function selectAction(item: ActionItem) {
     editType = item.id;
-    editGkgColumn = item.gkgColumn;
-    editIsAppeal = item.id === 'TP3B' || item.id === 'TP3C';
+    editGkgColumn = item.gkgColumn; // GKG Typ übernehmen
+    editIsAppeal = item.id === 'TP3B' || item.id === 'TP3C'; // Auto-Detect Appeal
     
     searchQuery = item.label;
     showDropdown = false;
@@ -59,6 +63,7 @@
         editDesc = item.description;
     }
     
+    // Auto-GKG: Wenn Aktion einen GKG Typ hat, aktiviere Checkbox
     if (item.gkgColumn) editIncludeCourtFee = true;
     else editIncludeCourtFee = false;
   }
@@ -66,14 +71,14 @@
   function savePosition() {
     let finalLabel = editLabel.trim() || TP_LABELS[editType];
     const newDetails = calculateFees(
-        editValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
+        safeValue, editType, editGkgColumn, editIsAppeal, editMultiplier, editUnitRate, editSurcharge, editForeign, editIncludeCourtFee
     );
 
     const posData: Position = {
         id: editId || crypto.randomUUID(),
         label: finalLabel,
         description: editDesc,
-        value: editValue,
+        value: safeValue,
         multiplier: editMultiplier,
         type: editType,
         gkgColumn: editGkgColumn,
@@ -127,86 +132,21 @@
   let totalCourt = $derived(positions.reduce((sum, p) => sum + p.details.courtFee, 0));
   let totalGross = $derived(positions.reduce((sum, p) => sum + p.details.grossTotal, 0));
 
-  // --- NEUE COPY FUNKTION (HTML TABLE) ---
   async function copyToClipboard() {
-    // HTML Template für Word/Outlook
-    let html = `
-      <table style="border-collapse: collapse; width: 100%; font-family: Arial, sans-serif; font-size: 11pt;">
-        <tr style="border-bottom: 2px solid #000;">
-          <th style="text-align: left; padding: 4px;">Pos.</th>
-          <th style="text-align: left; padding: 4px;">Leistung</th>
-          <th style="text-align: right; padding: 4px;">Betrag (CHF)</th>
-        </tr>
-    `;
-
+    const padNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 }).padStart(12, ' ');
+    let text = `KOSTENNOTE\n--------------------------------\n`;
     positions.forEach((p, i) => {
-        html += `
-          <tr>
-            <td style="vertical-align: top; padding: 4px;">${i + 1}</td>
-            <td style="padding: 4px;">
-              <strong>${p.label}</strong><br>
-              <span style="font-size: 9pt; color: #666;">${p.description || ''}</span>
-            </td>
-            <td style="text-align: right; vertical-align: top; padding: 4px;">${formatCurrency(p.details.netTotal)}</td>
-          </tr>
-        `;
-        // Details Zeilen (optional, hier kompakt)
-        if(p.details.courtFee > 0) {
-             html += `
-              <tr>
-                <td></td>
-                <td style="padding: 2px 4px; font-size: 9pt; color: #444;">&nbsp;&nbsp;davon Gerichtsgebühr</td>
-                <td style="text-align: right; padding: 2px 4px; font-size: 9pt; color: #444;">${formatCurrency(p.details.courtFee)}</td>
-              </tr>
-            `;
-        }
+        text += `${i+1}. ${p.label}\n`;
+        text += `   Honorar .................... ${padNum(p.details.netTotal)}\n`;
+        if(p.details.courtFee > 0) text += `   GKG (${p.details.config.courtFeeLabel}) ....... ${padNum(p.details.courtFee)}\n`;
     });
-
-    html += `
-        <tr style="border-top: 1px solid #000;">
-          <td colspan="2" style="text-align: right; padding: 4px;"><strong>Netto Honorar</strong></td>
-          <td style="text-align: right; padding: 4px;">${formatCurrency(totalNet)}</td>
-        </tr>
-        <tr>
-          <td colspan="2" style="text-align: right; padding: 4px;">USt (8.1%)</td>
-          <td style="text-align: right; padding: 4px;">${formatCurrency(totalVat)}</td>
-        </tr>
-    `;
-
-    if(totalCourt > 0) {
-        html += `
-        <tr>
-          <td colspan="2" style="text-align: right; padding: 4px; color: blue;">Gerichtskosten (steuerfrei)</td>
-          <td style="text-align: right; padding: 4px; color: blue;">${formatCurrency(totalCourt)}</td>
-        </tr>
-        `;
-    }
-
-    html += `
-        <tr style="border-top: 2px solid #000; border-bottom: 2px solid #000;">
-          <td colspan="2" style="text-align: right; padding: 8px;"><strong>GESAMTBETRAG</strong></td>
-          <td style="text-align: right; padding: 8px;"><strong>${formatCurrency(totalGross)}</strong></td>
-        </tr>
-      </table>
-    `;
-
-    // Clipboard API mit HTML Support
-    try {
-      const blobHtml = new Blob([html], { type: "text/html" });
-      const blobText = new Blob([html.replace(/<[^>]*>?/gm, '')], { type: "text/plain" }); // Fallback Text
-      const data = [new ClipboardItem({ 
-          ["text/html"]: blobHtml,
-          ["text/plain"]: blobText 
-      })];
-      
-      await navigator.clipboard.write(data);
-      
-      copied = true; 
-      setTimeout(() => copied = false, 2000);
-    } catch (err) { 
-      console.error(err);
-      alert('Konnte nicht in Zwischenablage kopieren (Browser-Berechtigung?).'); 
-    }
+    text += `--------------------------------\n`;
+    text += `Netto ........................ ${padNum(totalNet)}\n`;
+    text += `USt .......................... ${padNum(totalVat)}\n`;
+    text += `Gerichtskosten ............... ${padNum(totalCourt)}\n`;
+    text += `TOTAL ........................ ${padNum(totalGross)}`;
+    await navigator.clipboard.writeText(text);
+    copied = true; setTimeout(() => copied = false, 2000);
   }
 </script>
 
@@ -243,18 +183,19 @@
         <div>
             <label class="label-text" for="label">Bezeichnung</label>
             <input id="label" type="text" bind:value={editLabel} class="input-field" />
-            {#if editDesc}<div class="text-[10px] text-slate-500 mt-1 font-mono">{editDesc}</div>{/if}
+            {#if editDesc}<div class="text-[10px] text-slate-500 mt-1">{editDesc}</div>{/if}
         </div>
 
         <div class="grid grid-cols-2 gap-4">
             <div>
                 <label class="label-text" for="val">Streitwert</label>
-                <input id="val" type="number" bind:value={editValue} class="input-field font-mono" />
+                <!-- FIX 1: Input Type restriction -->
+                <input id="val" type="number" min="0" bind:value={editValue} class="input-field font-mono" />
             </div>
             {#if isTimeBased || isQuantityBased}
             <div>
                 <label class="label-text" for="mult">{isTimeBased ? 'Einh.' : 'Anz.'}</label>
-                <input id="mult" type="number" bind:value={editMultiplier} class="input-field font-mono" step="0.5" />
+                <input id="mult" type="number" min="0.5" step="0.5" bind:value={editMultiplier} class="input-field font-mono" />
             </div>
             {/if}
         </div>
@@ -333,7 +274,7 @@
         {#if totalCourt > 0}<div class="flex justify-between text-blue-400"><span>Gerichtskosten</span><span>{formatCurrency(totalCourt)}</span></div>{/if}
         <div class="h-px bg-legal-700 my-2"></div>
         <div class="flex justify-between text-lg font-bold text-legal-gold"><span>TOTAL</span><span>{formatCurrency(totalGross)}</span></div>
-        <button onclick={copyToClipboard} disabled={positions.length === 0} class="w-full mt-4 py-2 bg-legal-700 hover:bg-legal-600 text-white rounded text-center text-xs uppercase tracking-wide font-bold disabled:opacity-50">{copied ? 'Kopiert!' : 'Tabelle kopieren (Word)'}</button>
+        <button onclick={copyToClipboard} disabled={positions.length === 0} class="w-full mt-4 py-2 bg-legal-700 hover:bg-legal-600 text-white rounded text-center text-xs uppercase tracking-wide font-bold disabled:opacity-50">{copied ? 'Kopiert!' : 'Kopieren'}</button>
       </div>
     </div>
   </div>

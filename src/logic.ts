@@ -56,14 +56,18 @@ export function calculateFees(
   includeCourtFee: boolean
 ): CalculationResult {
   
+  // FIX 1: Negative Streitwerte verhindern
+  // Wir nehmen an, dass ein negativer Streitwert im UI als 0 behandelt werden soll.
+  const safeValue = Math.max(0, value);
+
   // --- Anwaltshonorar ---
-  let singleUnitFee = getBaseFee(value, type);
+  let singleUnitFee = getBaseFee(safeValue, type);
   let totalBase = singleUnitFee * multiplier;
 
   // --- Einheitssatz (EHS) ---
   let unitRateAmount = 0;
   // Art 23 Abs 4: 50% bis 15k, 40% drüber
-  let ehsPercentage = value <= 15000 ? 0.50 : 0.40;
+  let ehsPercentage = safeValue <= 15000 ? 0.50 : 0.40;
   
   if (hasUnitRate) {
     unitRateAmount = totalBase * ehsPercentage;
@@ -86,10 +90,9 @@ export function calculateFees(
     let baseGKG = 0;
     
     // Finde den korrekten Schritt in der GKG Tabelle
-    // Wir müssen sicherstellen, dass wir nicht undefined zugreifen, falls die Tabelle leer ist
     if (TABLE_GKG.length > 0) {
         // Fall 1: Wert innerhalb der Tabelle
-        const foundStep = TABLE_GKG.find(step => value <= step.limit);
+        const foundStep = TABLE_GKG.find(step => safeValue <= step.limit);
         
         if (foundStep) {
             baseGKG = foundStep[gkgColumn];
@@ -107,8 +110,8 @@ export function calculateFees(
         // Art 30 Abs 3: Schuldentrieb Rechtsmittel (Staffelung) -> Das ist komplex, hier vereinfacht x2 für Standard Appeal
         // Für Schuldentrieb gibt es Sonderregeln (1x bis 5k, 2.5x bis 50k, 6x ab 50k)
         if (gkgColumn === 'schuld' || gkgColumn === 'exekution') {
-             if (value <= 5000) { courtFee = baseGKG * 1; courtFeeLabel = "1.0x GKG"; }
-             else if (value <= 50000) { courtFee = baseGKG * 2.5; courtFeeLabel = "2.5x GKG"; }
+             if (safeValue <= 5000) { courtFee = baseGKG * 1; courtFeeLabel = "1.0x GKG"; }
+             else if (safeValue <= 50000) { courtFee = baseGKG * 2.5; courtFeeLabel = "2.5x GKG"; }
              else { courtFee = baseGKG * 6; courtFeeLabel = "6.0x GKG"; }
         } else {
              // Standard Zivil/Ausserstreit Rechtsmittel
@@ -172,7 +175,7 @@ function getStandardFee(value: number, table: any[], stepInc: number, pctHigh: n
   if (value <= 500000) {
     const excess = value - 140000;
     const steps = Math.ceil(excess / 20000);
-    return lastTableStep.fee + (steps * stepInc);
+    return Math.min(lastTableStep.fee + (steps * stepInc), maxCap);
   }
 
   // 3. Bis 5 Mio (Prozentstufe 1)
