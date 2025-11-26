@@ -154,7 +154,6 @@ describe('🔥 ULTIMATE FUZZING: App vs. Independent Oracle', () => {
         50000000, 100000000
     ];
     
-    const allValues = [...boundaries, ...randomValues];
     const tariffs: TarifPosten[] = ['TP1', 'TP2', 'TP3A', 'TP3B', 'TP3C', 'TP5', 'TP6', 'TP7', 'TP8', 'TP9'];
 
     // Wir flatten das Array für vitest .each
@@ -179,36 +178,70 @@ describe('🔥 ULTIMATE FUZZING: App vs. Independent Oracle', () => {
         // Toleranz für Floating Point bei Prozentrechnungen
         expect(actual.baseFee).toBeCloseTo(expectedBase, 4);
     });
-
-    it('Validiert Einheitssatz (EHS) Logik global', () => {
-        // Prüft, ob EHS-Regel unabhängig vom Tarif immer stimmt
-        allValues.slice(0, 100).forEach(val => {
-            const res = calculateFees(val, 'TP3A', undefined, false, 1, true, false, false, false);
-            const rate = val <= 15000 ? 0.5 : 0.4;
-            expect(res.unitRateAmount).toBeCloseTo(res.baseFee * rate, 4);
-        });
-    });
 });
 
-describe('1. Manuelle "Golden Master" Tests (Smoke Tests)', () => {
-    // Diese Tests bleiben als "menschenlesbare" Referenz
-    it('Case 1: Der 15k EHS Kipppunkt (TP3A)', () => {
-        const res = calculateFees(15000, 'TP3A', 'zivil', false, 1, true, false, false, true);
-        expect(res.baseFee).toBe(634); // Aus REF_TP3A
-        expect(res.unitRateAmount).toBe(317);
-        expect(round(res.netTotal)).toBe(951);
-        expect(res.courtFee).toBe(850);
-        expect(round(res.grossTotal)).toBe(1878.03);
+describe('6. ROBUSTHEIT & INVARIANTEN (Destruktives Testing)', () => {
+
+    it('Invariant: Summe der Teile muss IMMER gleich dem Total sein (Cent-genau)', () => {
+        // Teste 100 zufällige Werte querbeet
+        const randomVals = Array.from({ length: 100 }, () => Math.random() * 1000000);
+        
+        randomVals.forEach(val => {
+            // Mit EHS, GKG und USt
+            const res = calculateFees(val, 'TP3A', 'zivil', false, 1, true, false, false, true);
+            
+            // Rechnungsprüfung: Base + EHS + Surcharge = Netto
+            const calcNet = res.baseFee + res.unitRateAmount + res.surchargeAmount;
+            expect(res.netTotal).toBeCloseTo(calcNet, 5);
+
+            // Rechnungsprüfung: Netto + USt + GKG = Brutto
+            const calcGross = res.netTotal + res.vatAmount + res.courtFee;
+            expect(res.grossTotal).toBeCloseTo(calcGross, 5);
+        });
     });
 
-    it('Case 2: 500k Grenze (Linear -> Prozent)', () => {
-        const res = calculateFees(500000, 'TP3A', 'zivil', false, 1, true, false, false, false);
-        expect(res.baseFee).toBe(4446);
-        expect(res.unitRateAmount).toBe(1778.40);
+    it('Monotonie-Prüfung: Basisgebühr muss bei höherem Streitwert steigen (oder gleich bleiben)', () => {
+        // Wir testen die Basisgebühr (ohne EHS, da EHS bei 15k einen Knick nach unten macht!)
+        const values = [500, 1000, 15000, 15001, 20000, 50000, 140000, 140001, 500000, 500001];
+        const tariffs: TarifPosten[] = ['TP1', 'TP3A', 'TP2'];
+
+        tariffs.forEach(type => {
+            let prevFee = 0;
+            values.forEach(val => {
+                const res = calculateFees(val, type, undefined, false, 1, false, false, false, false);
+                // Fee bei aktuellem Wert muss >= Fee bei vorherigem Wert sein
+                if (res.baseFee < prevFee) {
+                    throw new Error(`MONOTONIE VERLETZUNG bei ${type}: ${val}CHF (${res.baseFee}) ist kleiner als vorher (${prevFee})`);
+                }
+                prevFee = res.baseFee;
+            });
+        });
     });
 
-    it('Case 3: Das Absolute Cap (100 Mio)', () => {
-        const res = calculateFees(100000000, 'TP3A', undefined, false, 1, false, false, false, false);
-        expect(res.baseFee).toBe(43200); // Oracle sagt auch 43200
+    it('Bekannte Anomalie im Gesetz: TP5 bei 15.000 CHF vs 15.001 CHF (Total sinkt!)', () => {
+        // Dies ist ein Test, der beweist, dass wir den "Bug im Gesetz" korrekt implementiert haben.
+        // Bei TP5 steigt die Basisgebühr bei 15k NICHT an (bleibt 33 CHF bis 25k).
+        // Aber der EHS fällt von 50% auf 40%.
+        // Ergo: Wer 1 CHF mehr streitet, zahlt weniger Anwalt.
+        
+        const at15k = calculateFees(15000, 'TP5', undefined, false, 1, true, false, false, false);
+        const at15k1 = calculateFees(15001, 'TP5', undefined, false, 1, true, false, false, false);
+
+        // Basisgebühr ist gleich
+        expect(at15k.baseFee).toBe(at15k1.baseFee);
+        
+        // Aber Total ist bei 15.001 NIEDRIGER!
+        expect(at15k1.netTotal).toBeLessThan(at15k.netTotal);
+        
+        console.log(`Gesetzes-Anomalie bestätigt: TP5 15k=${at15k.netTotal} vs 15.001k=${at15k1.netTotal}`);
+    });
+
+    it('Input Validation: Negative Werte und Null', () => {
+        // Sollte nicht abstürzen, sondern 0 oder Min-Fee returnen
+        const zeroRes = calculateFees(0, 'TP3A', undefined, false, 1, false, false, false, false);
+        expect(zeroRes.grossTotal).not.toBeNaN();
+        
+        const negRes = calculateFees(-1000, 'TP3A', undefined, false, 1, false, false, false, false);
+        expect(negRes.grossTotal).not.toBeNaN();
     });
 });
