@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { calculateFees, formatCurrency, ACTION_ITEMS, TP_LABELS, type TarifPosten, type Position, type ActionItem } from '../logic';
+  import { calculateFees, formatCurrency, ACTION_ITEMS, SERVICE_GROUPS, TP_LABELS, type TarifPosten, type Position, type ActionItem, type ServiceGroup } from '../logic';
   import { GKG_LABELS, type GKG_COLUMN } from '../tarife/gkg';
   import { slide } from 'svelte/transition';
 
   // --- STATE ---
   let editId = $state<string | null>(null);
-  let expandedId = $state<string | null>(null); // Für Transparenz-Details
+  let expandedId = $state<string | null>(null); // Für Transparenz-Details in der Liste
   
   // Inputs
   let editValue = $state(50000);
@@ -22,17 +22,54 @@
   let editLabel = $state('');
   let editDesc = $state('');
 
-  // Search
+  // Tree / Search State
   let searchQuery = $state('');
   let showDropdown = $state(false);
-  
-  let filteredActions = $derived(
-    ACTION_ITEMS.filter(item => {
-      if (!searchQuery && !showDropdown) return false;
-      const q = searchQuery.toLowerCase();
-      return item.label.toLowerCase().includes(q) || item.keywords.some(k => k.includes(q));
-    })
-  );
+  // Set für aufgeklappte Gruppen im Dropdown
+  let expandedGroups = $state(new Set<string>());
+
+  // Filter Logic für Tree
+  let filteredGroups = $derived.by(() => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return SERVICE_GROUPS; // Zeige alle Gruppen wenn keine Suche
+
+    // Filter Gruppen, die passende Items haben
+    return SERVICE_GROUPS.map((group: ServiceGroup) => {
+      const matchingItems = group.items.filter((item: ActionItem) => 
+        item.label.toLowerCase().includes(q) || 
+        item.keywords.some((k: string) => k.includes(q)) ||
+        group.label.toLowerCase().includes(q) // Auch Gruppenname matchen
+      );
+      
+      if (matchingItems.length > 0) {
+        return { ...group, items: matchingItems };
+      }
+      return null;
+    }).filter((g: ServiceGroup | null) => g !== null) as ServiceGroup[];
+  });
+
+  // Auto-Expand bei Suche
+  $effect(() => {
+    if (searchQuery) {
+      // Wenn gesucht wird, klappen wir alle Treffer auf
+      const allIds = filteredGroups.map(g => g.id);
+      expandedGroups = new Set(allIds);
+    } else {
+      // Reset wenn Suche leer (optional, oder man lässt es offen)
+      // expandedGroups = new Set(); 
+    }
+  });
+
+  function toggleGroup(groupId: string, e: Event) {
+    e.stopPropagation(); // Verhindert Schließen des Dropdowns
+    const newSet = new Set(expandedGroups);
+    if (newSet.has(groupId)) {
+      newSet.delete(groupId);
+    } else {
+      newSet.add(groupId);
+    }
+    expandedGroups = newSet;
+  }
 
   let isTimeBased = $derived(['TP7', 'TP8', 'TP9'].includes(editType));
   let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType));
@@ -56,14 +93,15 @@
     editGkgColumn = item.gkgColumn; // GKG Typ übernehmen
     editIsAppeal = item.id === 'TP3B' || item.id === 'TP3C'; // Auto-Detect Appeal
     
-    searchQuery = item.label;
+    // Label setzen
+    editLabel = item.label;
+    editDesc = item.description;
+    
+    // Suche zurücksetzen und schließen
+    searchQuery = item.label; // Zeigt gewählte Aktion an
     showDropdown = false;
     
-    if (!editId) {
-        editLabel = item.label;
-        editDesc = item.description;
-    }
-    
+    // Auto-GKG Checkbox
     if (item.gkgColumn) editIncludeCourtFee = true;
     else editIncludeCourtFee = false;
   }
@@ -174,21 +212,65 @@
       </h2>
       
       <div class="space-y-4">
-        <!-- SEARCH -->
+        <!-- TREE SEARCH DROPDOWN -->
         <div class="relative">
           <label class="label-text" for="search">Leistung</label>
-          <input id="search" type="text" bind:value={searchQuery} onfocus={() => showDropdown = true} placeholder="Suche..." class="input-field" autocomplete="off" />
-          {#if showDropdown && (searchQuery || filteredActions.length > 0)}
-            <ul class="absolute top-full left-0 right-0 mt-1 bg-legal-800 border border-legal-700 rounded-lg shadow-xl max-h-80 overflow-y-auto z-50">
-              {#each filteredActions as item}
-                <li>
-                  <button class="w-full text-left p-3 hover:bg-legal-700 text-sm text-slate-200 transition-colors cursor-pointer border-b border-legal-700/50" onmousedown={() => selectAction(item)}>
-                    <div class="font-semibold text-legal-gold">{item.label}</div>
-                    <div class="text-xs text-slate-500 font-mono">{item.description}</div>
-                  </button>
-                </li>
-              {/each}
-            </ul>
+          <div class="relative">
+            <input 
+                id="search" 
+                type="text" 
+                bind:value={searchQuery} 
+                onfocus={() => showDropdown = true} 
+                placeholder="Suchen oder Auswählen..." 
+                class="input-field pr-8" 
+                autocomplete="off" 
+            />
+            {#if showDropdown}
+                <button class="absolute right-2 top-3 text-slate-500 hover:text-white" onclick={() => showDropdown = false}>✕</button>
+            {/if}
+          </div>
+
+          {#if showDropdown}
+            <div class="absolute top-full left-0 right-0 mt-1 bg-legal-800 border border-legal-700 rounded-lg shadow-xl max-h-96 overflow-y-auto z-50 custom-scrollbar">
+              {#if filteredGroups.length === 0}
+                <div class="p-4 text-center text-slate-500 text-sm">Keine Ergebnisse.</div>
+              {:else}
+                <ul class="divide-y divide-legal-700/50">
+                  {#each filteredGroups as group (group.id)}
+                    <li>
+                        <!-- Group Header -->
+                        <button 
+                            class="w-full flex items-center justify-between p-3 hover:bg-legal-700/50 text-left transition-colors group"
+                            onclick={(e) => toggleGroup(group.id, e)}
+                        >
+                            <div>
+                                <div class="font-bold text-legal-gold text-sm">{group.label}</div>
+                                {#if group.description}<div class="text-[10px] text-slate-500">{group.description}</div>{/if}
+                            </div>
+                            <span class="text-slate-500 transform transition-transform {expandedGroups.has(group.id) ? 'rotate-180' : ''}">▼</span>
+                        </button>
+
+                        <!-- Group Items -->
+                        {#if expandedGroups.has(group.id)}
+                            <ul class="bg-black/20 border-t border-legal-700/30" transition:slide={{ duration: 150 }}>
+                                {#each group.items as item}
+                                    <li>
+                                        <button 
+                                            class="w-full text-left pl-6 pr-3 py-2 hover:bg-legal-700 text-slate-300 hover:text-white text-xs transition-colors flex flex-col"
+                                            onmousedown={() => selectAction(item)}
+                                        >
+                                            <span class="font-medium">{item.label}</span>
+                                            <span class="text-[10px] text-slate-500 font-mono">{item.description}</span>
+                                        </button>
+                                    </li>
+                                {/each}
+                            </ul>
+                        {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </div>
           {/if}
         </div>
 
@@ -327,7 +409,14 @@
 
       <div class="flex-grow overflow-y-auto p-4 space-y-3">
         {#each positions as pos (pos.id)}
-            <div class="bg-legal-900/40 rounded border border-legal-700 p-3 hover:border-legal-500 transition-colors cursor-pointer group relative {editId === pos.id ? 'ring-1 ring-orange-500' : ''}" onclick={() => editPosition(pos)}>
+            <!-- FIX: Outer element is now a div with proper accessibility roles -->
+            <div 
+                class="w-full text-left bg-legal-900/40 rounded border border-legal-700 p-3 hover:border-legal-500 transition-colors cursor-pointer group relative {editId === pos.id ? 'ring-1 ring-orange-500' : ''}" 
+                role="button"
+                tabindex="0"
+                onclick={() => editPosition(pos)}
+                onkeydown={(e) => e.key === 'Enter' && editPosition(pos)}
+            >
                 <div class="flex justify-between items-start pr-20 relative">
                     <div>
                         <div class="font-medium text-white text-sm">{pos.label}</div>

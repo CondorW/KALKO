@@ -7,9 +7,24 @@ import { TABLE_TP5, TP5_STEP_INCREMENT, TP5_CAP } from './tarife/tp5';
 import { TABLE_TP8, TP8_STEP_INCREMENT, TP8_CAP } from './tarife/tp8';
 import { TABLE_GKG, type GKG_COLUMN } from './tarife/gkg';
 
-import { ACTION_ITEMS, TP_LABELS, type TarifPosten, type ActionItem } from './fees';
+// FIX: Re-export everything needed by the UI from fees.ts
+import { 
+  TP_LABELS, 
+  ACTION_ITEMS, 
+  SERVICE_GROUPS, 
+  type TarifPosten, 
+  type ActionItem, 
+  type ServiceGroup 
+} from './fees';
 
-export { ACTION_ITEMS, TP_LABELS, type TarifPosten, type ActionItem };
+export { 
+  TP_LABELS, 
+  ACTION_ITEMS, 
+  SERVICE_GROUPS, 
+  type TarifPosten, 
+  type ActionItem, 
+  type ServiceGroup 
+};
 
 const VAT_RATE = 0.081; 
 const GENOSSEN_SURCHARGE = 0.10;
@@ -57,7 +72,6 @@ export function calculateFees(
 ): CalculationResult {
   
   // FIX 1: Negative Streitwerte verhindern
-  // Wir nehmen an, dass ein negativer Streitwert im UI als 0 behandelt werden soll.
   const safeValue = Math.max(0, value);
 
   // --- Anwaltshonorar ---
@@ -98,8 +112,6 @@ export function calculateFees(
             baseGKG = foundStep[gkgColumn];
         } else {
             // Fall 2: Wert über der Tabelle -> Letzten Wert nehmen (oder Logik erweitern)
-            // Laut GGG Art 30 Abs 1 "im Rahmen der Bemessungsgrundlagen".
-            // Da wir nur eine Tabelle bis 2 Mio haben, nehmen wir den Max-Wert als Fallback.
             baseGKG = TABLE_GKG[TABLE_GKG.length - 1][gkgColumn];
         }
     }
@@ -107,8 +119,6 @@ export function calculateFees(
     // 2. Multiplikatoren anwenden (Art 30 GGG)
     if (isAppeal) {
         // Art 30 Abs 2: Zweifache Gebühr für Berufungen/Revisionen
-        // Art 30 Abs 3: Schuldentrieb Rechtsmittel (Staffelung) -> Das ist komplex, hier vereinfacht x2 für Standard Appeal
-        // Für Schuldentrieb gibt es Sonderregeln (1x bis 5k, 2.5x bis 50k, 6x ab 50k)
         if (gkgColumn === 'schuld' || gkgColumn === 'exekution') {
              if (safeValue <= 5000) { courtFee = baseGKG * 1; courtFeeLabel = "1.0x GKG"; }
              else if (safeValue <= 50000) { courtFee = baseGKG * 2.5; courtFeeLabel = "2.5x GKG"; }
@@ -155,8 +165,17 @@ function getBaseFee(value: number, type: TarifPosten): number {
     case 'TP3B': return getStandardFee(value, TABLE_TP3B, TP3B_STEP_INCREMENT, TP3B_PCT_HIGH, TP3B_PCT_SUPER_HIGH, TP3B_CAP);
     case 'TP3C': return getStandardFee(value, TABLE_TP3C, TP3C_STEP_INCREMENT, TP3C_PCT_HIGH, TP3C_PCT_SUPER_HIGH, TP3C_CAP);
     case 'TP5': return getScaledFee(value, TABLE_TP5, TP5_STEP_INCREMENT, TP5_CAP);
-    case 'TP6': return Math.min(getScaledFee(value, TABLE_TP5, TP5_STEP_INCREMENT, Infinity) * 2, 330);
-    case 'TP7': return Math.min(getScaledFee(value, TABLE_TP5, TP5_STEP_INCREMENT, Infinity) * 4, 440);
+    
+    // FIX FÜR TP6 / TP7 LOGIK:
+    case 'TP6': {
+        const tp5Base = getScaledFee(value, TABLE_TP5, TP5_STEP_INCREMENT, TP5_CAP);
+        return Math.min(tp5Base * 2, 330);
+    }
+    case 'TP7': {
+        const tp5Base = getScaledFee(value, TABLE_TP5, TP5_STEP_INCREMENT, TP5_CAP);
+        return Math.min(tp5Base * 4, 440);
+    }
+    
     case 'TP8': return getScaledFee(value, TABLE_TP8, TP8_STEP_INCREMENT, TP8_CAP);
     case 'TP9': return 75;
     default: return 0;
@@ -202,9 +221,8 @@ function getScaledFee(value: number, table: any[], stepInc: number, maxCap: numb
     if (value <= step.limit) return step.fee; 
   }
   
-  // 2. Calculate Excess if not found in table
-  // We use the last step of the table as the base for calculation
-  if (table.length === 0) return 0; // Safety check
+  // 2. Calculate Excess
+  if (table.length === 0) return 0;
 
   const lastTableStep = table[table.length - 1];
   const excess = value - lastTableStep.limit;
