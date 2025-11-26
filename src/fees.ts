@@ -10,7 +10,7 @@ export * from './tarife/gkg';
 import type { GKG_COLUMN } from './tarife/gkg';
 
 export type TarifPosten = 
-  | 'TP1' | 'TP2' | 'TP3A' | 'TP3B' | 'TP3C' 
+  | 'TP1' | 'TP2' | 'TP3A' | 'TP3A_Session' | 'TP3B' | 'TP3C' 
   | 'TP5' | 'TP6' | 'TP7' | 'TP8' | 'TP9';
 
 export interface FeeStep {
@@ -82,14 +82,17 @@ export const SERVICE_GROUPS: ServiceGroup[] = [
   },
   {
     id: 'TP3A',
-    label: 'TP 3A: Klagen (Ausführlich)',
-    description: 'Substantiierte Klagen & Schriftsätze',
+    label: 'TP 3A: Klagen & Tagsatzung',
+    description: 'Ausführliche Klagen und Verhandlungen',
     items: [
-      { id: 'TP3A', label: 'Klage (Ausführlich)', description: 'TP 3A: Klage mit Sachverhaltsdarstellung', keywords: ['klage', 'substantiiert'], gkgColumn: 'zivil' },
-      { id: 'TP3A', label: 'Klagbeantwortung (Ausführlich)', description: 'TP 3A: Beantwortung mit Sachverhaltsdarstellung', keywords: ['antwort', 'replik'], gkgColumn: 'zivil' },
-      { id: 'TP3A', label: 'Vorbereitender Schriftsatz', description: 'TP 3A: Vorbereitende Schriftsätze (§ 257 ZPO)', keywords: ['vorbereitung', 'schriftsatz'], gkgColumn: 'zivil' },
-      { id: 'TP3A', label: 'Einstweilige Verfügung', description: 'TP 3A: Antrag EV oder Äusserung dazu', keywords: ['ev', 'einstweilig'], gkgColumn: 'sicherung' },
-      { id: 'TP3A', label: 'Rekurs (Kosten)', description: 'TP 3A: Kostenrekurse', keywords: ['rekurs', 'kosten'], gkgColumn: 'zivil' },
+      { id: 'TP3A', label: 'Klage (Ausführlich)', description: 'TP 3A I: Klage mit Sachverhaltsdarstellung', keywords: ['klage', 'substantiiert'], gkgColumn: 'zivil' },
+      // NEU: Tagsatzung
+      { id: 'TP3A_Session', label: 'Tagsatzung (Verhandlung)', description: 'TP 3A II: Mündliche Verhandlung (1. Std voll, jede weitere 50%)', keywords: ['verhandlung', 'tagsatzung', 'termin', 'stunde'], gkgColumn: undefined },
+      
+      { id: 'TP3A', label: 'Klagbeantwortung (Ausführlich)', description: 'TP 3A I: Beantwortung mit Sachverhaltsdarstellung', keywords: ['antwort', 'replik'], gkgColumn: 'zivil' },
+      { id: 'TP3A', label: 'Vorbereitender Schriftsatz', description: 'TP 3A I: Vorbereitende Schriftsätze (§ 257 ZPO)', keywords: ['vorbereitung', 'schriftsatz'], gkgColumn: 'zivil' },
+      { id: 'TP3A', label: 'Einstweilige Verfügung', description: 'TP 3A I: Antrag EV oder Äusserung dazu', keywords: ['ev', 'einstweilig'], gkgColumn: 'sicherung' },
+      { id: 'TP3A', label: 'Rekurs (Kosten)', description: 'TP 3A I: Kostenrekurse', keywords: ['rekurs', 'kosten'], gkgColumn: 'zivil' },
     ]
   },
   {
@@ -142,7 +145,7 @@ export const SERVICE_GROUPS: ServiceGroup[] = [
 export const ACTION_ITEMS: ActionItem[] = SERVICE_GROUPS.flatMap(g => g.items);
 
 export const TP_LABELS: Record<string, string> = {
-  'TP1': 'TP 1', 'TP2': 'TP 2', 'TP3A': 'TP 3A', 'TP3B': 'TP 3B',
+  'TP1': 'TP 1', 'TP2': 'TP 2', 'TP3A': 'TP 3A', 'TP3A_Session': 'TP 3A (Tagsatzung)', 'TP3B': 'TP 3B',
   'TP3C': 'TP 3C', 'TP5': 'TP 5', 'TP6': 'TP 6', 'TP7': 'TP 7',
   'TP8': 'TP 8', 'TP9': 'TP 9'
 };

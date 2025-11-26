@@ -71,7 +71,8 @@
     expandedGroups = newSet;
   }
 
-  let isTimeBased = $derived(['TP7', 'TP8', 'TP9'].includes(editType));
+  // FIX: TP3A_Session hier hinzufügen, damit das Eingabefeld erscheint!
+  let isTimeBased = $derived(['TP7', 'TP8', 'TP9', 'TP3A_Session'].includes(editType));
   let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType));
   
   // Sichere Werte für Vorschau
@@ -101,9 +102,15 @@
     searchQuery = item.label; // Zeigt gewählte Aktion an
     showDropdown = false;
     
-    // Auto-GKG Checkbox
-    if (item.gkgColumn) editIncludeCourtFee = true;
-    else editIncludeCourtFee = false;
+    // Auto-GKG Checkbox: Wir aktivieren es NICHT automatisch, um Transparenz zu wahren.
+    // Der User muss GGG explizit anhaken.
+    if (item.gkgColumn) {
+        // Optional: Man könnte hier editIncludeCourtFee = true setzen, 
+        // aber laut Anforderung soll es separat eingefügt werden.
+        // Wir lassen es also standardmäßig aus oder übernehmen nur den Spalten-Typ.
+    } else {
+        editIncludeCourtFee = false;
+    }
   }
 
   function savePosition() {
@@ -188,13 +195,22 @@
     let text = `KOSTENNOTE\n--------------------------------\n`;
     positions.forEach((p, i) => {
         text += `${i+1}. ${p.label}\n`;
+        // ADDED: Logic for detailed description of time-based items like TP3A_Session
+        if (p.type === 'TP3A_Session') {
+             const hours = Math.ceil(p.multiplier);
+             const additional = Math.max(0, hours - 1);
+             text += `   Dauer: ${p.multiplier} Std. (1x Voll, ${additional}x Halb)\n`;
+        } else if (p.details.config.isTimeBased || p.multiplier > 1) {
+             text += `   Menge/Dauer: ${p.multiplier}\n`;
+        }
+
         text += `   Honorar .................... ${padNum(p.details.netTotal)}\n`;
-        if(p.details.courtFee > 0) text += `   GKG (${p.details.config.courtFeeLabel}) ....... ${padNum(p.details.courtFee)}\n`;
+        if(p.details.courtFee > 0) text += `   Gerichtsgebühren (${p.details.config.courtFeeLabel}) ... ${padNum(p.details.courtFee)}\n`;
     });
     text += `--------------------------------\n`;
     text += `Netto ........................ ${padNum(totalNet)}\n`;
     text += `USt .......................... ${padNum(totalVat)}\n`;
-    text += `Gerichtskosten ............... ${padNum(totalCourt)}\n`;
+    text += `Gerichtsgebühren ............. ${padNum(totalCourt)}\n`;
     text += `TOTAL ........................ ${padNum(totalGross)}`;
     await navigator.clipboard.writeText(text);
     copied = true; setTimeout(() => copied = false, 2000);
@@ -295,7 +311,12 @@
             </div>
             {#if isTimeBased || isQuantityBased}
             <div>
-                <label class="label-text" for="mult">{isTimeBased ? 'Einh.' : 'Anz.'}</label>
+                <!-- DYNAMIC LABEL: Std. vs Einh. vs Anz. -->
+                <label class="label-text" for="mult">
+                    {#if editType === 'TP3A_Session'}Std.
+                    {:else if isTimeBased}Einh.
+                    {:else}Anz.{/if}
+                </label>
                 <input 
                   id="mult" 
                   type="number" 
@@ -360,17 +381,17 @@
               {/if}
             </div>
           </label>
-          
-          <div class="h-px bg-legal-700/50 my-1"></div>
-          
-          <!-- GKG CHECKBOX -->
+        </div>
+
+        <!-- SEPARATER BLOCK FÜR GERICHTSGEBÜHREN (GGG) -->
+        <div class="space-y-3 pt-2 bg-legal-900/30 p-3 rounded border border-legal-700/30">
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editIncludeCourtFee} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
             <div class="flex items-center gap-2">
-                <span class="text-sm text-white font-medium">Gerichtsgebühr (GGG)</span>
+                <span class="text-sm text-white font-medium">Gerichtsgebühren (GGG)</span>
                 {#if editIncludeCourtFee}
                     <span class="text-xs text-blue-300 font-mono bg-blue-500/10 px-1 rounded">
-                        {previewResult.config.courtFeeLabel || 'GKG'} <span class="opacity-60">|</span> {formatCurrency(previewResult.courtFee)}
+                        {previewResult.config.courtFeeLabel || 'Basis'} <span class="opacity-60">|</span> {formatCurrency(previewResult.courtFee)}
                     </span>
                 {/if}
             </div>
@@ -421,6 +442,16 @@
                     <div>
                         <div class="font-medium text-white text-sm">{pos.label}</div>
                         {#if pos.description}<div class="text-[10px] text-slate-500 font-mono mt-0.5">{pos.description}</div>{/if}
+                        <!-- ADDED: Visible Duration/Quantity Indicator -->
+                        {#if pos.type === 'TP3A_Session'}
+                            <div class="text-[10px] text-legal-accent font-mono mt-0.5">
+                                ⏱ {pos.multiplier} Std. (1x voll, {Math.max(0, Math.ceil(pos.multiplier)-1)}x halb)
+                            </div>
+                        {:else if (pos.details.config.isTimeBased || pos.multiplier > 1)}
+                            <div class="text-[10px] text-legal-accent font-mono mt-0.5">
+                                ✖ {pos.multiplier} {pos.type === 'TP8' ? 'Einheiten' : 'x'}
+                            </div>
+                        {/if}
                     </div>
                     
                     <!-- LIST ITEM ACTIONS -->
@@ -440,7 +471,7 @@
                 
                 {#if pos.details.courtFee > 0}
                     <div class="mt-2 text-[10px] text-blue-300 bg-blue-900/20 px-2 py-1 rounded w-fit flex items-center gap-2">
-                        <span>⚖️ GKG: {formatCurrency(pos.details.courtFee)}</span>
+                        <span>⚖️ Gerichtsgebühren: {formatCurrency(pos.details.courtFee)}</span>
                     </div>
                 {/if}
 
@@ -478,7 +509,7 @@
       <div class="bg-legal-900 p-4 border-t border-legal-700 space-y-1 font-mono text-sm">
         <div class="flex justify-between text-slate-400"><span>Netto Honorar</span><span>{formatCurrency(totalNet)}</span></div>
         <div class="flex justify-between text-slate-400"><span>USt (8.1%)</span><span>{formatCurrency(totalVat)}</span></div>
-        {#if totalCourt > 0}<div class="flex justify-between text-blue-400"><span>Gerichtskosten</span><span>{formatCurrency(totalCourt)}</span></div>{/if}
+        {#if totalCourt > 0}<div class="flex justify-between text-blue-400"><span>Gerichtsgebühren</span><span>{formatCurrency(totalCourt)}</span></div>{/if}
         <div class="h-px bg-legal-700 my-2"></div>
         <div class="flex justify-between text-lg font-bold text-legal-gold"><span>TOTAL</span><span>{formatCurrency(totalGross)}</span></div>
         <button onclick={copyToClipboard} disabled={positions.length === 0} class="w-full mt-4 py-2 bg-legal-700 hover:bg-legal-600 text-white rounded text-center text-xs uppercase tracking-wide font-bold disabled:opacity-50">{copied ? 'Kopiert!' : 'Kopieren'}</button>
