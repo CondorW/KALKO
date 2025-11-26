@@ -1,9 +1,11 @@
 <script lang="ts">
   import { calculateFees, formatCurrency, ACTION_ITEMS, TP_LABELS, type TarifPosten, type Position, type ActionItem } from '../logic';
   import { GKG_LABELS, type GKG_COLUMN } from '../tarife/gkg';
+  import { slide } from 'svelte/transition';
 
   // --- STATE ---
   let editId = $state<string | null>(null);
+  let expandedId = $state<string | null>(null); // Für Transparenz-Details
   
   // Inputs
   let editValue = $state(50000);
@@ -14,7 +16,6 @@
   let editMultiplier = $state(1);
   let editUnitRate = $state(true);
   let editSurcharge = $state(false);
-  // NEU: Statt editForeign nutzen wir explizit editVat (USt verrechnet)
   let editVat = $state(true); 
   let editIncludeCourtFee = $state(false);
   
@@ -41,7 +42,6 @@
   let safeMultiplier = $derived(Math.max(0, editMultiplier));
 
   // Preview Logic
-  // Wir übergeben !editVat als 'isForeign', da isForeign = true bedeutet "Keine USt"
   let previewResult = $derived(calculateFees(
     safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, editSurcharge, !editVat, editIncludeCourtFee
   ));
@@ -64,7 +64,6 @@
         editDesc = item.description;
     }
     
-    // Auto-GKG: Wenn Aktion einen GKG Typ hat, aktiviere Checkbox
     if (item.gkgColumn) editIncludeCourtFee = true;
     else editIncludeCourtFee = false;
   }
@@ -106,7 +105,6 @@
     editMultiplier = pos.multiplier;
     editUnitRate = pos.details.config.hasUnitRate;
     editSurcharge = pos.details.config.hasSurcharge;
-    // Mapping: isForeign -> !editVat
     editVat = !pos.details.config.isForeign;
     editIncludeCourtFee = pos.details.courtFee > 0;
     editLabel = pos.label;
@@ -120,7 +118,7 @@
     editDesc = '';
     searchQuery = '';
     editIncludeCourtFee = false;
-    editVat = true; // Reset auf "USt verrechnet"
+    editVat = true; 
     if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
@@ -130,7 +128,12 @@
     if (editId === id) resetEditor();
   }
 
-  // Hilfsfunktion: Minus-Taste blockieren
+  function toggleDetails(id: string, e: Event) {
+    e.stopPropagation();
+    if (expandedId === id) expandedId = null;
+    else expandedId = id;
+  }
+
   function blockNegative(e: KeyboardEvent) {
     if (e.key === '-' || e.key === 'e') {
       e.preventDefault();
@@ -199,7 +202,6 @@
         <div class="grid grid-cols-2 gap-4">
             <div>
                 <label class="label-text" for="val">Streitwert</label>
-                <!-- FRONTEND VALIDATION: min="0", blockiert Minus-Taste -->
                 <input 
                   id="val" 
                   type="number" 
@@ -212,7 +214,6 @@
             {#if isTimeBased || isQuantityBased}
             <div>
                 <label class="label-text" for="mult">{isTimeBased ? 'Einh.' : 'Anz.'}</label>
-                <!-- FRONTEND VALIDATION: min="0", blockiert Minus-Taste -->
                 <input 
                   id="mult" 
                   type="number" 
@@ -228,7 +229,7 @@
 
         <!-- OPTIONS -->
         <div class="space-y-3 pt-2 bg-legal-900/50 p-3 rounded border border-legal-700/50">
-          <!-- EHS CHECKBOX MIT VORSCHAU -->
+          <!-- EHS CHECKBOX -->
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editUnitRate} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
             <div class="flex items-center gap-2">
@@ -241,12 +242,31 @@
             </div>
           </label>
 
-          <label class="flex items-center space-x-3 cursor-pointer group">
-            <input type="checkbox" bind:checked={editSurcharge} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
-            <span class="text-sm text-slate-300">Genossenzuschlag</span>
-          </label>
+          <!-- SURCHARGE WITH TOOLTIP -->
+          <div class="flex items-center justify-between">
+            <label class="flex items-center space-x-3 cursor-pointer group">
+              <input type="checkbox" bind:checked={editSurcharge} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
+              <span class="text-sm text-slate-300">Genossenzuschlag</span>
+            </label>
+            
+            <!-- Tooltip / Info Icon -->
+            <div class="relative group">
+                <div class="text-slate-500 hover:text-white cursor-help text-xs border border-slate-600 rounded-full w-4 h-4 flex items-center justify-center">i</div>
+                <div class="absolute bottom-full right-0 mb-2 w-64 p-3 bg-black/90 text-slate-200 text-xs rounded border border-legal-700 hidden group-hover:block z-50 shadow-xl backdrop-blur-sm">
+                    <div class="font-bold text-legal-gold mb-1 border-b border-slate-700 pb-1">Art. 15 RATG (Streitgenossen)</div>
+                    <p class="leading-relaxed">
+                        "Dem Rechtsanwalt gebührt eine Erhöhung, wenn er mehrere Personen vertritt oder mehreren gegenübersteht."
+                    </p>
+                    <ul class="list-disc list-inside mt-1 text-slate-400">
+                        <li>+10% für die zweite Person</li>
+                        <li>+5% für jede weitere Person</li>
+                        <li>Maximal 50% Zuschlag</li>
+                    </ul>
+                </div>
+            </div>
+          </div>
           
-          <!-- UST CHECKBOX MIT VORSCHAU -->
+          <!-- UST CHECKBOX -->
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editVat} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
             <div class="flex items-center gap-2">
@@ -261,7 +281,7 @@
           
           <div class="h-px bg-legal-700/50 my-1"></div>
           
-          <!-- GKG CHECKBOX MIT VORSCHAU -->
+          <!-- GKG CHECKBOX -->
           <label class="flex items-center space-x-3 cursor-pointer group">
             <input type="checkbox" bind:checked={editIncludeCourtFee} class="w-4 h-4 rounded border-legal-700 bg-legal-900 text-legal-accent">
             <div class="flex items-center gap-2">
@@ -308,16 +328,58 @@
       <div class="flex-grow overflow-y-auto p-4 space-y-3">
         {#each positions as pos (pos.id)}
             <div class="bg-legal-900/40 rounded border border-legal-700 p-3 hover:border-legal-500 transition-colors cursor-pointer group relative {editId === pos.id ? 'ring-1 ring-orange-500' : ''}" onclick={() => editPosition(pos)}>
-                <button onclick={(e) => { e.stopPropagation(); removePosition(pos.id); }} class="absolute top-2 right-2 text-slate-600 hover:text-red-500 p-1">✕</button>
-                <div class="flex justify-between items-start pr-8">
+                <div class="flex justify-between items-start pr-20 relative">
                     <div>
                         <div class="font-medium text-white text-sm">{pos.label}</div>
                         {#if pos.description}<div class="text-[10px] text-slate-500 font-mono mt-0.5">{pos.description}</div>{/if}
                     </div>
+                    
+                    <!-- LIST ITEM ACTIONS -->
+                    <div class="absolute top-0 right-0 flex items-center gap-1">
+                        <!-- Eye Button for Transparency -->
+                        <button onclick={(e) => toggleDetails(pos.id, e)} class="p-1 text-slate-500 hover:text-legal-gold transition-colors" title="Berechnung anzeigen">
+                            👁️
+                        </button>
+                        <!-- Delete Button -->
+                        <button onclick={(e) => { e.stopPropagation(); removePosition(pos.id); }} class="p-1 text-slate-600 hover:text-red-500 transition-colors" title="Löschen">
+                            ✕
+                        </button>
+                    </div>
+
                     <div class="text-right"><div class="font-mono text-sm text-white">{formatCurrency(pos.details.netTotal)}</div></div>
                 </div>
+                
                 {#if pos.details.courtFee > 0}
-                    <div class="mt-2 text-[10px] text-blue-300 bg-blue-900/20 px-2 py-1 rounded w-fit">⚖️ GKG: {formatCurrency(pos.details.courtFee)}</div>
+                    <div class="mt-2 text-[10px] text-blue-300 bg-blue-900/20 px-2 py-1 rounded w-fit flex items-center gap-2">
+                        <span>⚖️ GKG: {formatCurrency(pos.details.courtFee)}</span>
+                    </div>
+                {/if}
+
+                <!-- TRANSPARENCY DETAILS DROPDOWN -->
+                {#if expandedId === pos.id}
+                    <div transition:slide class="mt-3 pt-3 border-t border-dashed border-legal-700 text-xs space-y-1.5 bg-black/20 -mx-3 px-3 pb-2">
+                        <div class="flex justify-between text-slate-400">
+                            <span>Basis ({pos.type} @ {formatCurrency(pos.value)})</span>
+                            <span class="font-mono">{formatCurrency(pos.details.baseFee)}</span>
+                        </div>
+                        {#if pos.details.unitRateAmount > 0}
+                        <div class="flex justify-between text-slate-400">
+                            <span>Einheitssatz ({pos.details.config.ehsLabel})</span>
+                            <span class="font-mono">{formatCurrency(pos.details.unitRateAmount)}</span>
+                        </div>
+                        {/if}
+                        {#if pos.details.surchargeAmount > 0}
+                        <div class="flex justify-between text-slate-400">
+                            <span>Genossenzuschlag (10%)</span>
+                            <span class="font-mono">{formatCurrency(pos.details.surchargeAmount)}</span>
+                        </div>
+                        {/if}
+                        <div class="h-px bg-legal-700/30 my-1"></div>
+                        <div class="flex justify-between font-semibold text-legal-gold">
+                            <span>Zwischensumme</span>
+                            <span>{formatCurrency(pos.details.baseFee + pos.details.unitRateAmount + pos.details.surchargeAmount)}</span>
+                        </div>
+                    </div>
                 {/if}
             </div>
         {/each}
