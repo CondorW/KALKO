@@ -226,10 +226,10 @@
           <h2 class="text-lg font-bold text-white tracking-tight">
             {editId ? 'Position bearbeiten' : 'Neue Leistung'}
           </h2>
-          <p class="text-[10px] text-legal-500 uppercase tracking-widest mt-0.5">Eingabe & Konfiguration</p>
+          <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5 font-semibold">Eingabe & Konfiguration</p>
         </div>
         {#if editId}
-          <button onclick={resetEditor} class="text-xs text-red-400 hover:text-red-300 font-medium transition-colors px-2 py-1 rounded hover:bg-white/5">
+          <button onclick={resetEditor} class="text-xs text-red-400 hover:text-red-300 font-medium transition-colors px-3 py-1.5 rounded hover:bg-white/5 border border-transparent hover:border-red-900/50">
             Abbrechen
           </button>
         {/if}
@@ -240,7 +240,7 @@
         
         <!-- 1. SEARCH / DROPDOWN (The Critical UI Part) -->
         <div class="relative z-30">
-          <label class="label-text" for="search">Leistung / Tarifposten</label>
+          <label class="label-text text-slate-300" for="search">Leistung / Tarifposten</label>
           <div class="relative group">
              <!-- Search Icon -->
             <div class="absolute left-3 top-3 text-legal-500 pointer-events-none group-focus-within:text-legal-gold transition-colors">
@@ -255,7 +255,7 @@
                 bind:value={searchQuery} 
                 onfocus={() => showDropdown = true} 
                 placeholder="Suche (z.B. 'Klage', 'TP3A')..." 
-                class="input-field pl-9 pr-8 font-medium text-white shadow-inner bg-legal-950/50" 
+                class="input-field pl-9 pr-8 font-medium text-white shadow-inner bg-legal-950 focus:bg-legal-950 border-legal-700" 
                 autocomplete="off" 
             />
             
@@ -274,11 +274,7 @@
               transition:slide={{ duration: 150 }}
               class="
                 bg-legal-850 z-50 overflow-y-auto max-h-[400px] ring-1 ring-black/50
-                
-                /* Mobile Styles (Relative, Wide, Flat) */
                 relative -mx-5 w-[calc(100%+2.5rem)] border-y border-legal-700 rounded-none shadow-none my-2
-                
-                /* Desktop Styles (Absolute, Contained, Floating) */
                 lg:absolute lg:top-full lg:left-0 lg:right-0 lg:mx-0 lg:w-auto lg:border lg:rounded-md lg:shadow-2xl lg:my-0 lg:mt-2
               "
             >
@@ -332,13 +328,13 @@
         <!-- 2. DESCRIPTION & VALUES -->
         <div class="space-y-4">
             <div>
-                <label class="label-text" for="label">Bezeichnung (Manuell)</label>
-                <input id="label" type="text" bind:value={editLabel} class="input-field" placeholder="Standardtext der Leistung..." />
+                <label class="label-text text-slate-300" for="label">Bezeichnung (Manuell)</label>
+                <input id="label" type="text" bind:value={editLabel} class="input-field bg-legal-950" placeholder="Standardtext der Leistung..." />
             </div>
 
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="label-text" for="val">Streitwert (CHF)</label>
+                    <label class="label-text text-slate-300" for="val">Streitwert (CHF)</label>
                     <div class="relative">
                         <input 
                         id="val" 
@@ -346,14 +342,14 @@
                         min="0" 
                         onkeydown={blockNegative}
                         bind:value={editValue} 
-                        class="input-field font-mono text-right pr-3 tabular-nums" 
+                        class="input-field font-mono text-right pr-3 tabular-nums bg-legal-950 text-white font-semibold" 
                         />
-                        <div class="absolute left-3 top-2.5 text-legal-500 text-xs pointer-events-none">CHF</div>
+                        <div class="absolute left-3 top-2.5 text-slate-500 text-xs pointer-events-none font-bold">CHF</div>
                     </div>
                 </div>
                 {#if isTimeBased || isQuantityBased}
                 <div transition:slide={{ axis: 'x' }}>
-                    <label class="label-text" for="mult">
+                    <label class="label-text text-slate-300" for="mult">
                         {#if editType === 'TP3A_Session'}Dauer (Std.)
                         {:else if isTimeBased}Einheiten
                         {:else}Anzahl{/if}
@@ -365,7 +361,7 @@
                       step="0.5" 
                       onkeydown={blockNegative}
                       bind:value={editMultiplier} 
-                      class="input-field font-mono text-center tabular-nums bg-legal-850" 
+                      class="input-field font-mono text-center tabular-nums bg-legal-950 text-white font-semibold" 
                     />
                 </div>
                 {/if}
@@ -373,7 +369,7 @@
         </div>
 
         <!-- 3. CONFIGURATION TOGGLES -->
-        <div class="bg-legal-950/30 rounded border border-legal-700/50 p-4 space-y-4">
+        <div class="bg-legal-950/50 rounded border border-legal-700/50 p-4 space-y-4">
           
           <!-- EHS -->
           <div class="flex items-center justify-between group">
@@ -443,7 +439,7 @@
           {#if editIncludeCourtFee}
             <div transition:slide class="space-y-3 pl-7 pt-1 border-t border-legal-700/30 mt-2">
                 <div>
-                    <label class="text-[10px] text-legal-500 uppercase tracking-wider mb-1 block">Verfahrensart (GKG)</label>
+                    <label class="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block font-semibold">Verfahrensart (GKG)</label>
                     <select bind:value={editGkgColumn} class="input-field text-xs py-1.5 h-auto bg-legal-950">
                         {#each Object.entries(GKG_LABELS) as [key, label]}
                             <option value={key}>{label}</option>
@@ -463,7 +459,7 @@
       <!-- Card Footer -->
       <div class="p-5 border-t border-legal-700 bg-legal-900 z-10">
          <div class="flex justify-between items-center mb-4">
-            <span class="text-xs text-legal-500 font-medium uppercase">Vorschau Total</span>
+            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Vorschau Total</span>
             <span class="text-xl font-mono font-bold text-white tabular-nums tracking-tight">{formatCurrency(previewResult.grossTotal)}</span>
          </div>
          <button onclick={savePosition} class="btn-primary w-full shadow-legal-accent/20">
@@ -482,7 +478,7 @@
       <div class="bg-legal-900 p-4 sm:p-6 border-b border-legal-700 flex flex-col sm:flex-row justify-between items-start gap-4 shrink-0">
          <div>
             <h2 class="text-xl sm:text-2xl font-bold text-white tracking-tight font-sans">Leistungsaufstellung</h2>
-            <p class="text-xs sm:text-sm text-legal-500 mt-1">Detaillierte Kostenübersicht</p>
+            <p class="text-xs sm:text-sm text-slate-400 mt-1 font-medium">Detaillierte Kostenübersicht</p>
          </div>
          <div class="flex gap-2 w-full sm:w-auto">
             {#if positions.length > 0}
@@ -499,7 +495,7 @@
       </div>
 
       <!-- Invoice Table Header (Hidden on Mobile) -->
-      <div class="hidden sm:grid bg-legal-900/50 px-6 py-2 border-b border-legal-700 grid-cols-12 text-[10px] font-bold text-legal-500 uppercase tracking-widest shrink-0">
+      <div class="hidden sm:grid bg-legal-900/50 px-6 py-3 border-b border-legal-700 grid-cols-12 text-[10px] font-bold text-legal-500 uppercase tracking-widest shrink-0">
          <div class="col-span-8">Beschreibung</div>
          <div class="col-span-4 text-right">Betrag (CHF)</div>
       </div>
@@ -529,33 +525,33 @@
                   >
                      <!-- Col 1: Content -->
                      <div class="sm:col-span-8 pr-0 sm:pr-4">
-                        <div class="flex items-baseline gap-2">
-                           <span class="text-xs text-legal-500 font-mono w-6 shrink-0">{(i+1).toString().padStart(2, '0')}.</span>
-                           <span class="text-sm font-medium text-slate-200 group-hover:text-white transition-colors">{pos.label}</span>
+                        <div class="flex items-baseline gap-3">
+                           <span class="text-xs text-slate-500 font-mono w-6 shrink-0">{(i+1).toString().padStart(2, '0')}.</span>
+                           <span class="text-sm font-semibold text-slate-200 group-hover:text-white transition-colors">{pos.label}</span>
                         </div>
                         {#if pos.description}
-                            <div class="pl-8 text-xs text-legal-500 font-normal mt-0.5 truncate">{pos.description}</div>
+                            <div class="pl-9 text-xs text-slate-400 font-normal mt-0.5 truncate">{pos.description}</div>
                         {/if}
                         
                         <!-- Tags / Meta -->
-                        <div class="pl-8 mt-1.5 flex flex-wrap gap-2">
+                        <div class="pl-9 mt-2 flex flex-wrap gap-2">
                             <!-- Type Badge -->
-                            <span class="text-[10px] bg-legal-950 border border-legal-700 text-slate-400 px-1.5 rounded">{pos.type}</span>
+                            <span class="text-[10px] bg-legal-950 border border-legal-700 text-slate-400 px-1.5 py-0.5 rounded font-medium">{pos.type}</span>
                             
                             <!-- Duration / Quantity -->
                             {#if pos.type === 'TP3A_Session'}
-                                <span class="text-[10px] text-legal-gold border border-legal-gold/20 bg-legal-gold/5 px-1.5 rounded flex items-center gap-1">
+                                <span class="text-[10px] text-legal-gold border border-legal-gold/20 bg-legal-gold/5 px-1.5 py-0.5 rounded flex items-center gap-1 font-mono">
                                     <span>⏱</span> {pos.multiplier}h
                                 </span>
                             {:else if pos.multiplier > 1}
-                                <span class="text-[10px] text-legal-gold border border-legal-gold/20 bg-legal-gold/5 px-1.5 rounded">
+                                <span class="text-[10px] text-legal-gold border border-legal-gold/20 bg-legal-gold/5 px-1.5 py-0.5 rounded font-mono">
                                     {pos.multiplier}x
                                 </span>
                             {/if}
 
                             <!-- Court Fee Badge -->
                             {#if pos.details.courtFee > 0}
-                                <span class="text-[10px] text-blue-400 border border-blue-400/20 bg-blue-400/5 px-1.5 rounded flex items-center gap-1">
+                                <span class="text-[10px] text-blue-400 border border-blue-400/20 bg-blue-400/5 px-1.5 py-0.5 rounded flex items-center gap-1 font-mono">
                                     <span>⚖️</span> {formatCurrency(pos.details.courtFee)}
                                 </span>
                             {/if}
@@ -564,9 +560,9 @@
 
                      <!-- Col 2: Amount (Mobile: Row with Label, Desktop: Stacked Right) -->
                      <div class="sm:col-span-4 flex sm:flex-col justify-between sm:justify-start items-center sm:items-end border-t border-legal-700/30 sm:border-0 pt-2 sm:pt-0 mt-1 sm:mt-0">
-                        <span class="text-xs text-legal-500 sm:hidden font-medium">Honorar:</span>
+                        <span class="text-xs text-slate-500 sm:hidden font-medium">Honorar:</span>
                         <div class="text-right">
-                            <span class="font-mono text-sm text-slate-200 tabular-nums">{formatCurrency(pos.details.netTotal)}</span>
+                            <span class="font-mono text-sm font-semibold text-slate-200 tabular-nums">{formatCurrency(pos.details.netTotal)}</span>
                             {#if pos.details.courtFee > 0}
                                 <span class="font-mono text-[10px] text-blue-400 tabular-nums block mt-0.5 sm:mt-1 text-right">+ {formatCurrency(pos.details.courtFee)}</span>
                             {/if}
@@ -574,20 +570,20 @@
                      </div>
                   </div>
 
-                  <!-- Hover Actions (Absolute Right) - Visible on touch via dedicated buttons if needed, currently generic desktop hover -->
+                  <!-- Hover Actions (Absolute Right) -->
                   <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                     <button onclick={(e) => toggleDetails(pos.id, e)} class="p-1.5 bg-legal-900 text-legal-500 hover:text-legal-gold border border-legal-700 rounded shadow-sm" title="Details">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" /><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 8.201 2.66 9.336 6.41.147.481.147.99 0 1.472C18.201 14.34 14.257 17 10 17c-4.257 0-8.201-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>
+                     <button onclick={(e) => toggleDetails(pos.id, e)} class="p-1.5 bg-legal-900 text-slate-400 hover:text-legal-gold border border-legal-700 rounded shadow-sm" title="Details">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" /><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 8.201 2.66 9.336 6.41.147.481.147.99 0 1.472C18.201 14.34 14.257 17 10 17c-4.257 0-8.201-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>
                      </button>
-                     <button onclick={(e) => { e.stopPropagation(); removePosition(pos.id); }} class="p-1.5 bg-legal-900 text-legal-500 hover:text-red-400 border border-legal-700 rounded shadow-sm" title="Löschen">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3 h-3"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
+                     <button onclick={(e) => { e.stopPropagation(); removePosition(pos.id); }} class="p-1.5 bg-legal-900 text-slate-400 hover:text-red-400 border border-legal-700 rounded shadow-sm" title="Löschen">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
                      </button>
                   </div>
 
                   <!-- Expanded Details -->
                   {#if expandedId === pos.id}
                      <div transition:slide class="mx-4 mb-3 p-3 bg-black/20 rounded border border-legal-700/30 text-xs">
-                        <div class="grid grid-cols-2 gap-y-1 text-legal-500">
+                        <div class="grid grid-cols-2 gap-y-1 text-slate-400">
                            <span>Basis ({pos.type})</span>
                            <span class="text-right font-mono">{formatCurrency(pos.details.baseFee)}</span>
                            
@@ -616,11 +612,11 @@
       <!-- Footer / Totals -->
       <div class="bg-legal-900 p-4 sm:p-6 border-t border-legal-700 shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.3)] z-20">
          <div class="grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-2 max-w-sm ml-auto">
-            <div class="text-sm text-legal-500 text-right">Netto Honorar</div>
-            <div class="text-sm font-mono text-slate-300 text-right tabular-nums">{formatCurrency(totalNet)}</div>
+            <div class="text-sm text-slate-400 text-right">Netto Honorar</div>
+            <div class="text-sm font-mono text-slate-200 text-right tabular-nums font-medium">{formatCurrency(totalNet)}</div>
 
-            <div class="text-sm text-legal-500 text-right">USt (8.1%)</div>
-            <div class="text-sm font-mono text-slate-300 text-right tabular-nums">{formatCurrency(totalVat)}</div>
+            <div class="text-sm text-slate-400 text-right">USt (8.1%)</div>
+            <div class="text-sm font-mono text-slate-200 text-right tabular-nums">{formatCurrency(totalVat)}</div>
 
             {#if totalCourt > 0}
                 <div class="text-sm text-blue-400 text-right">Gerichtsgebühren</div>

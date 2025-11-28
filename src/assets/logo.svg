@@ -1,17 +1,34 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <!-- Hintergrund-Form (Optional, für App Icons) -->
-  <!-- <rect width="100" height="100" rx="20" fill="#0f172a"/> -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <style>.brand { fill: #fbbf24; }</style>
+  </defs>
+
+  <!-- Hexagon Rahmen (Outline) -->
+  <!-- Geometrisches Zentrum: 50, 50 -->
+  <path d="M50 5 L89 27.5 V72.5 L50 95 L11 72.5 V27.5 Z" 
+        fill="none" 
+        stroke="#fbbf24" 
+        stroke-width="3"
+        stroke-linejoin="round"/>
+
+  <!-- DAS MASSIVE "K" (Zentriert) -->
+  <!-- Bounding Box des K: x=25 bis x=75 (Breite 50, Mitte 50) -->
+  <g>
+      <!-- 1. Vertikaler Balken (Links) -->
+      <!-- x=25, Breite=12 -> Geht bis x=37 -->
+      <rect x="25" y="28" width="12" height="44" class="brand"/>
+      
+      <!-- 2. Oberer Arm -->
+      <!-- Startet bei x=37 (Anschluss an Balken), geht bis x=75 -->
+      <path d="M37 50 L61 28 H75 L51 50 Z" class="brand"/>
+      
+      <!-- 3. Unterer Arm -->
+      <!-- Startet bei x=37, geht bis x=75 -->
+      <path d="M37 50 L61 72 H75 L51 50 Z" class="brand"/>
+  </g>
   
-  <!-- Das "K" Monogramm / Kalko Symbol -->
-  <!-- Vertikale Säule (Law/Stability) -->
-  <path d="M28 20V80" stroke="currentColor" stroke-width="12" stroke-linecap="square"/>
-  
-  <!-- Oberer Arm (Calculation/Graph) -->
-  <path d="M72 20L28 50" stroke="currentColor" stroke-width="12" stroke-linecap="square"/>
-  
-  <!-- Unterer Arm (Stands fest am Boden) -->
-  <path d="M48 50L72 80" stroke="currentColor" stroke-width="12" stroke-linecap="square"/>
-  
-  <!-- Akzent-Punkt (Precision) -->
-  <circle cx="82" cy="50" r="6" fill="currentColor"/>
+  <!-- Dekorative Tech-Dots -->
+  <circle cx="50" cy="5" r="2" class="brand"/>
+  <circle cx="50" cy="95" r="2" class="brand"/>
+
 </svg>
