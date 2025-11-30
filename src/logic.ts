@@ -26,21 +26,19 @@ export {
 };
 
 const VAT_RATE = 0.081; 
-const GENOSSEN_SURCHARGE = 0.10;
 
 const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-export interface Position {
-  id: string;
-  date: string; // NEU: Datum für die Leistung
-  label: string;
-  description?: string; 
-  value: number;
-  multiplier: number;
-  type: TarifPosten;
-  gkgColumn?: GKG_COLUMN; 
-  isAppeal?: boolean; 
-  details: CalculationResult;
+// Explizite Definition der Config für Typ-Sicherheit
+export interface CalculationConfig {
+    hasUnitRate: boolean;
+    streitgenossenCount: number; // Anzahl der ZUSÄTZLICHEN Personen (0 = keine Erhöhung)
+    surchargePercent: number;    // Angewandter Prozentsatz (z.B. 0.10 für 10%)
+    isForeign: boolean;
+    isTimeBased: boolean;
+    isExpense: boolean; 
+    ehsLabel: string;
+    courtFeeLabel?: string;
 }
 
 export interface CalculationResult {
@@ -51,15 +49,23 @@ export interface CalculationResult {
   netTotal: number;
   vatAmount: number;
   grossTotal: number;
-  config: {
-    hasUnitRate: boolean;
-    hasSurcharge: boolean;
-    isForeign: boolean;
-    isTimeBased: boolean;
-    isExpense: boolean; // NEU: Kennzeichen für Barauslagen
-    ehsLabel: string;
-    courtFeeLabel?: string;
-  }
+  config: CalculationConfig;
+}
+
+// Alias für Kompatibilität mit Tests, falls nötig
+export type FeeResult = CalculationResult;
+
+export interface Position {
+  id: string;
+  date: string; 
+  label: string;
+  description?: string; 
+  value: number;
+  multiplier: number;
+  type: TarifPosten;
+  gkgColumn?: GKG_COLUMN; 
+  isAppeal?: boolean; 
+  details: CalculationResult;
 }
 
 export function calculateFees(
@@ -69,13 +75,13 @@ export function calculateFees(
   isAppeal: boolean, 
   multiplier: number = 1,
   hasUnitRate: boolean,
-  hasSurcharge: boolean,
+  streitgenossenCount: number = 0, // Default 0 (nur 1 Klient, kein Zuschlag)
   isForeign: boolean,
   includeCourtFee: boolean
 ): CalculationResult {
   
-  // Guard Clause für negative Werte (bei Barauslagen könnte negativ theoretisch Gutschrift sein, aber wir sperren es erstmal)
-  if (value < 0) { // Allow 0
+  // Guard Clause für negative Werte
+  if (value < 0) { 
     return createZeroResult(type);
   }
 
@@ -87,19 +93,20 @@ export function calculateFees(
   
   // FALL A: Reine Barauslage (Manuell)
   if (type === 'BARAUSLAGE') {
-      // Bei Barauslage ist der "value" direkt der Preis
       totalBase = round(safeValue * multiplier);
-      // Keine Einheitssätze, keine Zuschläge auf Spesen
       return {
           baseFee: totalBase,
           unitRateAmount: 0,
           surchargeAmount: 0,
           courtFee: 0,
           netTotal: totalBase,
-          vatAmount: 0, // Annahme: Spesen oft steuerfrei durchlaufend oder Brutto eingegeben. User kann via "USt" Flag steuern.
-          grossTotal: totalBase, // Wir rechnen MwSt unten drauf wenn gewünscht
+          vatAmount: 0, 
+          grossTotal: totalBase,
           config: {
-              hasUnitRate: false, hasSurcharge: false, isForeign,
+              hasUnitRate: false, 
+              streitgenossenCount: 0, 
+              surchargePercent: 0, 
+              isForeign,
               isTimeBased: false,
               isExpense: true,
               ehsLabel: '-',
@@ -110,18 +117,20 @@ export function calculateFees(
 
   // FALL B: Gerichtsgebühr (GKG)
   if (type === 'GKG') {
-      // Hier ist "value" der Streitwert, aus dem die Gebühr berechnet wird
       const gkgRes = calculateGKG(safeValue, gkgColumn || 'zivil', isAppeal);
       return {
-          baseFee: 0, // GKG ist keine Anwaltsleistung
+          baseFee: 0, 
           unitRateAmount: 0,
           surchargeAmount: 0,
           courtFee: gkgRes.amount,
           netTotal: 0,
-          vatAmount: 0, // Steuerfrei
+          vatAmount: 0, 
           grossTotal: gkgRes.amount,
           config: {
-              hasUnitRate: false, hasSurcharge: false, isForeign,
+              hasUnitRate: false, 
+              streitgenossenCount: 0, 
+              surchargePercent: 0, 
+              isForeign,
               isTimeBased: false,
               isExpense: true,
               ehsLabel: '-',
@@ -153,15 +162,30 @@ export function calculateFees(
     unitRateAmount = round(totalBase * ehsPercentage); 
   }
 
-  // Genossenzuschlag
+  // Art. 15 RATG: Streitgenossenzuschlag
+  // Berechnung auf Basis der Verdienstsumme (totalBase) inkl. Einheitssatz (unitRateAmount)
   const subTotalForSurcharge = totalBase + unitRateAmount;
   let surchargeAmount = 0;
-  
-  if (hasSurcharge) { 
-    surchargeAmount = round(subTotalForSurcharge * GENOSSEN_SURCHARGE); 
+  let surchargePercent = 0;
+
+  // Logik:
+  // 1 Streitgenosse (d.h. 2 Personen total) = 10%
+  // Jeder weitere = +5%
+  // Max = 50%
+  if (streitgenossenCount >= 1) {
+      surchargePercent = 0.10 + ((streitgenossenCount - 1) * 0.05);
+      
+      // Deckelung bei 50%
+      if (surchargePercent > 0.50) {
+          surchargePercent = 0.50;
+      }
   }
 
-  // Optionales GKG bei Anwaltsleistung (Legacy Support / Mixed Mode)
+  if (surchargePercent > 0) {
+      surchargeAmount = round(subTotalForSurcharge * surchargePercent);
+  }
+
+  // Optionales GKG bei Anwaltsleistung
   let courtFee = 0;
   let courtFeeLabel = "";
   
@@ -184,7 +208,10 @@ export function calculateFees(
     vatAmount,
     grossTotal,
     config: {
-      hasUnitRate, hasSurcharge, isForeign, 
+      hasUnitRate, 
+      streitgenossenCount, 
+      surchargePercent, 
+      isForeign, 
       isTimeBased: ['TP7', 'TP8', 'TP9', 'TP3A_Session'].includes(type),
       isExpense: false,
       ehsLabel: (ehsPercentage * 100).toFixed(0) + '%',
@@ -223,8 +250,14 @@ function createZeroResult(type: TarifPosten): CalculationResult {
       baseFee: 0, unitRateAmount: 0, surchargeAmount: 0, courtFee: 0,
       netTotal: 0, vatAmount: 0, grossTotal: 0,
       config: {
-        hasUnitRate: false, hasSurcharge: false, isForeign: false,
-        isTimeBased: false, isExpense: false, ehsLabel: '0%', courtFeeLabel: ''
+        hasUnitRate: false, 
+        streitgenossenCount: 0, 
+        surchargePercent: 0, 
+        isForeign: false,
+        isTimeBased: false, 
+        isExpense: false, 
+        ehsLabel: '0%', 
+        courtFeeLabel: ''
       }
     };
 }

@@ -102,3 +102,24 @@
     @apply absolute inset-0 flex items-center justify-center text-[10px] font-bold text-legal-900;
   }
 }
+
+/* --- FIXES & ADDITIONS --- */
+
+/* FIX: Date Picker Icon sichtbar machen im Dark Mode */
+/* Invertiert das schwarze Standard-Icon zu weiß und setzt Akzentfarbe */
+input[type="date"] {
+  color-scheme: dark; /* Sagt dem Browser, dass er dunkle Controls rendern soll */
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1); /* Weißes Icon */
+    opacity: 0.6;
+    cursor: pointer;
+    margin-left: 10px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+    /* Optional: Akzentfarbe beim Hover, falls unterstützt/gewünscht */
+    /* filter: invert(1) drop-shadow(0 0 2px var(--color-legal-gold)); */ 
+}

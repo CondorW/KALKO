@@ -18,7 +18,11 @@
   let editIsAppeal = $state(false);
   let editMultiplier = $state(1);
   let editUnitRate = $state(true);
-  let editSurcharge = $state(false);
+  
+  // Neuer Workflow für Art. 15 (Streitgenossen)
+  let editSurchargeEnabled = $state(false); // Checkbox Status
+  let editSurchargeCount = $state(1); // Anzahl der ZUSÄTZLICHEN Personen (Standard 1)
+  
   let editVat = $state(true);
   let editIncludeCourtFee = $state(false);
   let editLabel = $state('');
@@ -75,9 +79,12 @@
   
   let safeValue = $derived(Math.max(0, editValue));
   let safeMultiplier = $derived(Math.max(0, editMultiplier));
+  
+  // Berechne Anzahl der Streitgenossen für die Logik (0 wenn aus, sonst Wert)
+  let safeStreitgenossenCount = $derived(editSurchargeEnabled ? Math.max(1, editSurchargeCount) : 0);
 
   let previewResult = $derived(calculateFees(
-    safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, editSurcharge, !editVat, editIncludeCourtFee
+    safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, editIncludeCourtFee
   ));
 
   let positions = $state<Position[]>([]);
@@ -97,7 +104,7 @@
     
     if (item.id === 'BARAUSLAGE' || item.id === 'GKG') {
         editUnitRate = false;
-        editSurcharge = false;
+        editSurchargeEnabled = false;
     } else {
         editUnitRate = true;
     }
@@ -106,7 +113,7 @@
   function savePosition() {
     let finalLabel = editLabel.trim() || TP_LABELS[editType];
     const details = calculateFees(
-        safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, editSurcharge, !editVat, false
+        safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, false
     );
 
     const posData: Position = {
@@ -141,7 +148,17 @@
     editIsAppeal = !!pos.isAppeal;
     editMultiplier = pos.multiplier;
     editUnitRate = pos.details.config.hasUnitRate;
-    editSurcharge = pos.details.config.hasSurcharge;
+    
+    // Wiederherstellen des Zustands für Art. 15
+    const count = pos.details.config.streitgenossenCount;
+    if (count > 0) {
+        editSurchargeEnabled = true;
+        editSurchargeCount = count;
+    } else {
+        editSurchargeEnabled = false;
+        editSurchargeCount = 1; // Default
+    }
+
     editVat = !pos.details.config.isForeign;
     editIncludeCourtFee = false;
     editLabel = pos.label;
@@ -158,6 +175,8 @@
     editIncludeCourtFee = false;
     editVat = true; 
     editUnitRate = true;
+    editSurchargeEnabled = false;
+    editSurchargeCount = 1;
     if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
@@ -310,7 +329,8 @@
         <div class="grid grid-cols-2 gap-4">
             <div>
                 <label class="label-text text-slate-300" for="date">Datum</label>
-                <input id="date" type="date" bind:value={editDate} class="input-field bg-legal-950 text-slate-300" />
+                <!-- Inline-Style für das Icon, da globales CSS nicht verändert werden soll -->
+                <input id="date" type="date" bind:value={editDate} class="input-field bg-legal-950 text-slate-300 [color-scheme:dark]" />
             </div>
             <div>
                 <label class="label-text text-slate-300" for="label">Bezeichnung</label>
@@ -340,6 +360,8 @@
         <!-- OPTIONS -->
         {#if !isAnyExpense}
         <div class="bg-legal-950/50 rounded border border-legal-700/50 p-4 space-y-4" transition:slide>
+          
+          <!-- Einheitssatz Switch -->
           <div class="flex items-center justify-between group">
             <label class="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" bind:checked={editUnitRate} class="checkbox-legal">
@@ -351,21 +373,55 @@
                 </span>
             {/if}
           </div>
-          <div class="flex items-center justify-between group">
-            <div class="flex items-center gap-2">
-                <label class="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" bind:checked={editSurcharge} class="checkbox-legal">
-                <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Streitgenossen</span>
-                </label>
-                <div class="relative group/tooltip">
-                    <div class="text-legal-500 hover:text-legal-accent cursor-help">ⓘ</div>
-                    <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-black text-slate-300 text-[10px] rounded border border-legal-700 hidden group-hover/tooltip:block z-50 shadow-xl pointer-events-none">+10% ab 2. Person</div>
+
+          <!-- Streitgenossen (Art. 15 RATG) - DESIGN HACK: Vertical Stacking -->
+          <div class="flex flex-col group">
+            <div class="flex items-center justify-between w-full">
+                <!-- Checkbox Row -->
+                <div class="flex items-center gap-2">
+                    <label class="flex items-center gap-3 cursor-pointer py-1">
+                        <input type="checkbox" bind:checked={editSurchargeEnabled} class="checkbox-legal">
+                        <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Streitgenossenzuschlag</span>
+                    </label>
+                    <div class="relative group/tooltip">
+                        <div class="text-legal-500 hover:text-legal-accent cursor-help">ⓘ</div>
+                        <!-- Tooltip mit exaktem Gesetzestext -->
+                        <div class="absolute bottom-full left-0 mb-2 w-72 p-3 bg-black text-slate-300 text-[10px] rounded border border-legal-700 hidden group-hover/tooltip:block z-50 shadow-xl leading-relaxed">
+                            <strong class="text-legal-gold block mb-1">Art. 15 RATG Erhöhung</strong>
+                            Erhöhung der Entlohnung bei mehreren Personen (vertreten oder gegenüberstehend):<br>
+                            a) 2 Personen (1 Streitgenosse): <strong>10 %</strong><br>
+                            b) jede weitere Person: <strong>+5 %</strong><br>
+                            Maximal insgesamt <strong>50 %</strong>.
+                        </div>
+                    </div>
                 </div>
+
+                <!-- Result Badge (Top Right) -->
+                {#if editSurchargeEnabled}
+                    <span transition:fade={{ duration: 100 }} class="text-xs font-mono text-legal-accent bg-legal-accent/10 px-2 py-0.5 rounded border border-legal-accent/20 tabular-nums whitespace-nowrap ml-2">
+                        {(previewResult.config.surchargePercent * 100).toFixed(0)}% | {formatCurrency(previewResult.surchargeAmount)}
+                    </span>
+                {/if}
             </div>
-            {#if editSurcharge}
-                <span transition:fade class="text-xs font-mono text-legal-accent bg-legal-accent/10 px-2 py-0.5 rounded border border-legal-accent/20 tabular-nums">10% | {formatCurrency(previewResult.surchargeAmount)}</span>
+
+            <!-- Drawer for Input (Bottom Row) -->
+            {#if editSurchargeEnabled}
+                <div transition:slide={{ duration: 200 }} class="flex justify-end mt-1.5 w-full">
+                    <div class="flex items-center gap-2 bg-legal-900/30 rounded border border-legal-700/30 px-2 py-1">
+                        <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Weitere Personen</span>
+                        <input 
+                            type="number" 
+                            min="1" 
+                            max="20"
+                            bind:value={editSurchargeCount} 
+                            class="w-10 bg-transparent text-right font-mono text-xs text-white focus:outline-none border-b border-legal-700 focus:border-legal-accent pb-0.5"
+                        />
+                    </div>
+                </div>
             {/if}
           </div>
+
+          <!-- MwSt Switch -->
           <div class="flex items-center justify-between group">
             <label class="flex items-center gap-3 cursor-pointer">
               <input type="checkbox" bind:checked={editVat} class="checkbox-legal">
@@ -501,6 +557,13 @@
                                     {pos.multiplier}x
                                 </span>
                             {/if}
+                            
+                            <!-- Genossenzuschlag Tag -->
+                            {#if pos.details.config.streitgenossenCount > 0}
+                                <span class="text-[10px] text-legal-accent border border-legal-accent/20 bg-legal-accent/5 px-1.5 py-0.5 rounded font-mono">
+                                    +{ (pos.details.config.surchargePercent * 100).toFixed(0) }% ({pos.details.config.streitgenossenCount} Streitgenossen)
+                                </span>
+                            {/if}
                         </div>
                      </div>
 
@@ -555,7 +618,7 @@
                                {/if}
     
                                {#if pos.details.surchargeAmount > 0}
-                                  <span>Genossenzuschlag (10%)</span>
+                                  <span>Genossenzuschlag ({(pos.details.config.surchargePercent * 100).toFixed(0)}% für {pos.details.config.streitgenossenCount} Streitgenossen)</span>
                                   <span class="text-right font-mono">{formatCurrency(pos.details.surchargeAmount)}</span>
                                {/if}
                                
