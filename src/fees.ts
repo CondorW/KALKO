@@ -5,9 +5,9 @@ export * from './tarife/tp3b';
 export * from './tarife/tp3c';
 export * from './tarife/tp5';
 export * from './tarife/tp8';
-export * from './tarife/gkg';
+export * from './tarife/ggg';
 
-import type { GKG_COLUMN } from './tarife/gkg';
+import type { GKG_COLUMN } from './tarife/ggg';
 
 // 'GKG' = Berechnet nach Tabelle
 // 'BARAUSLAGE' = Manuelle Eingabe (Taxi, Kopien, etc.)

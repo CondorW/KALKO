@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { calculateFees, formatCurrency, ACTION_ITEMS, SERVICE_GROUPS, TP_LABELS, type TarifPosten, type Position, type ActionItem, type ServiceGroup } from '../logic';
-  import { GKG_LABELS, type GKG_COLUMN } from '../tarife/gkg';
+  import { calculateFees, formatCurrency, SERVICE_GROUPS, TP_LABELS, type ExtendedTarifPosten, type Position, type ExtendedActionItem, type ServiceGroup } from '../logic';
+  import { GGG_LABELS, type GGG_COLUMN } from '../tarife/ggg';
   import { slide, fade } from 'svelte/transition';
 
   // --- STATE ---
@@ -13,15 +13,19 @@
 
   // Inputs
   let editValue = $state(50000);
-  let editType = $state<TarifPosten>('TP3A');
-  let editGkgColumn = $state<GKG_COLUMN | undefined>('zivil');
+  let editType = $state<ExtendedTarifPosten>('TP3A');
+  let editGggColumn = $state<GGG_COLUMN | undefined>('zivil');
   let editIsAppeal = $state(false);
   let editMultiplier = $state(1);
   let editUnitRate = $state(true);
 
-  // Neuer Workflow für Art. 15 (Streitgenossen)
-  let editSurchargeEnabled = $state(false); // Checkbox Status
-  let editSurchargeCount = $state(1); // Anzahl der ZUSÄTZLICHEN Personen (Standard 1)
+  // Workflow für Art. 15 (Streitgenossen)
+  let editSurchargeEnabled = $state(false);
+  let editSurchargeCount = $state(1); 
+
+  // Neue spezialisierte Toggles für RATV Lücken
+  let editHasInfoSurcharge = $state(false); // Für TP 5 & 6
+  let editIsShortMeeting = $state(false);   // Für TP 8
 
   let editVat = $state(true); 
   let editIncludeCourtFee = $state(false);
@@ -36,7 +40,6 @@
   // Ref für Click-Outside Erkennung
   let searchWrapper = $state<HTMLElement | null>(null);
 
-  // Click Outside Handler
   function handleClickOutside(event: MouseEvent) {
     if (showDropdown && searchWrapper && !searchWrapper.contains(event.target as Node)) {
       showDropdown = false;
@@ -48,7 +51,7 @@
     if (!q) return SERVICE_GROUPS;
 
     return SERVICE_GROUPS.map((group: ServiceGroup) => {
-      const matchingItems = group.items.filter((item: ActionItem) => 
+      const matchingItems = group.items.filter((item: ExtendedActionItem) => 
         item.label.toLowerCase().includes(q) || 
         item.keywords.some((k: string) => k.includes(q)) ||
         group.label.toLowerCase().includes(q)
@@ -60,7 +63,7 @@
 
   $effect(() => {
     if (searchQuery) {
-      const allIds = filteredGroups.map(g => g.id);
+      const allIds = filteredGroups.map((g: ServiceGroup) => g.id);
       expandedGroups = new Set(allIds);
     }
   });
@@ -73,19 +76,17 @@
     expandedGroups = newSet;
   }
 
-  let isTimeBased = $derived(['TP7', 'TP8', 'TP9', 'TP3A_Session'].includes(editType));
-  let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType));
+  let isTimeBased = $derived(['TP7', 'TP8', 'TP9', 'TP3A_Session'].includes(editType as string));
+  let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType as string));
   let isManualExpense = $derived(editType === 'BARAUSLAGE');
-  let isAnyExpense = $derived(editType === 'GKG' || editType === 'BARAUSLAGE');
+  let isAnyExpense = $derived(editType === 'GGG' || editType === 'BARAUSLAGE');
 
   let safeValue = $derived(Math.max(0, editValue));
   let safeMultiplier = $derived(Math.max(0, editMultiplier));
-
-  // Berechne Anzahl der Streitgenossen für die Logik (0 wenn aus, sonst Wert)
   let safeStreitgenossenCount = $derived(editSurchargeEnabled ? Math.max(1, editSurchargeCount) : 0);
 
   let previewResult = $derived(calculateFees(
-    safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, editIncludeCourtFee
+    safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, editIncludeCourtFee, editHasInfoSurcharge, editIsShortMeeting
   ));
 
   let positions = $state<Position[]>([]);
@@ -93,9 +94,9 @@
 
   // --- ACTIONS ---
 
-  function selectAction(item: ActionItem) {
+  function selectAction(item: ExtendedActionItem) {
     editType = item.id;
-    editGkgColumn = item.gkgColumn; 
+    editGggColumn = item.gggColumn; 
     editIsAppeal = item.id === 'TP3B' || item.id === 'TP3C';
     editLabel = item.label;
     editDesc = item.description;
@@ -103,29 +104,32 @@
     showDropdown = false;
     editIncludeCourtFee = false;
     
-    if (item.id === 'BARAUSLAGE' || item.id === 'GKG') {
+    if (item.id === 'BARAUSLAGE' || item.id === 'GGG') {
        editUnitRate = false;
        editSurchargeEnabled = false;
     } else {
        editUnitRate = true;
     }
+    
+    editHasInfoSurcharge = false;
+    editIsShortMeeting = false;
   }
 
   function savePosition() {
-    let finalLabel = editLabel.trim() || TP_LABELS[editType];
+    let finalLabel = editLabel.trim() || TP_LABELS[editType as string] || editType;
     const details = calculateFees(
-        safeValue, editType, editGkgColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, false
+        safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, false, editHasInfoSurcharge, editIsShortMeeting
     );
 
     const posData: Position = {
         id: editId || crypto.randomUUID(),
         date: editDate,
-        label: finalLabel,
+        label: finalLabel as string,
         description: editDesc,
         value: safeValue,
         multiplier: safeMultiplier,
         type: editType,
-        gkgColumn: editGkgColumn,
+        gggColumn: editGggColumn,
         isAppeal: editIsAppeal,
         details: details
     };
@@ -145,20 +149,22 @@
     editDate = pos.date || today;
     editValue = pos.value;
     editType = pos.type;
-    editGkgColumn = pos.gkgColumn;
+    editGggColumn = pos.gggColumn;
     editIsAppeal = !!pos.isAppeal;
     editMultiplier = pos.multiplier;
     editUnitRate = pos.details.config.hasUnitRate;
 
-    // Wiederherstellen des Zustands für Art. 15
     const count = pos.details.config.streitgenossenCount;
     if (count > 0) {
       editSurchargeEnabled = true;
       editSurchargeCount = count;
     } else {
       editSurchargeEnabled = false;
-      editSurchargeCount = 1; // Default
+      editSurchargeCount = 1; 
     }
+
+    editHasInfoSurcharge = pos.details.config.hasInfoSurcharge || false;
+    editIsShortMeeting = pos.details.config.isShortMeeting || false;
 
     editVat = !pos.details.config.isForeign;
     editIncludeCourtFee = false;
@@ -173,11 +179,14 @@
     editLabel = '';
     editDesc = '';
     searchQuery = '';
+    showDropdown = false;
     editIncludeCourtFee = false;
     editVat = true; 
     editUnitRate = true;
     editSurchargeEnabled = false;
     editSurchargeCount = 1;
+    editHasInfoSurcharge = false;
+    editIsShortMeeting = false;
     if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
@@ -199,20 +208,23 @@
   let totalNet = $derived(positions.reduce((sum, p) => p.details.config.isExpense ? sum : sum + p.details.netTotal, 0));
   let totalVat = $derived(positions.reduce((sum, p) => sum + p.details.vatAmount, 0));
   let totalExpenses = $derived(positions.reduce((sum, p) => {
-      if (p.type === 'GKG') return sum + p.details.grossTotal;
-      if (p.type === 'BARAUSLAGE') return sum + p.details.grossTotal;
+      if (p.type === 'GGG' || p.type === 'BARAUSLAGE') return sum + p.details.grossTotal;
       return sum + p.details.courtFee;
   }, 0));
   let totalGross = $derived(totalNet + totalVat + totalExpenses);
 
-  // EDIT: Zentralisierte Funktion (Clean Code) generiert den Rechnungstext für Download und Copy
   function getInvoiceText(): string {
     const padNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 }).padStart(12, ' ');
     let text = `KOSTENNOTE\n--------------------------------\n`;
     positions.forEach((p, i) => {
         const d = new Date(p.date);
         const dateStr = d.toLocaleDateString('de-CH');
-        text += `${i+1}. [${dateStr}] ${p.label}\n`;
+        
+        let extraTags = '';
+        if (p.details.config.isShortMeeting) extraTags += ' [<10 Min]';
+        if (p.details.config.hasInfoSurcharge) extraTags += ' [+Info]';
+
+        text += `${i+1}. [${dateStr}] ${p.label}${extraTags}\n`;
         
         if (p.type === 'TP3A_Session') {
             text += `   Dauer: ${p.multiplier} Std.\n`;
@@ -224,7 +236,7 @@
             text += `   Barauslage ................. ${padNum(p.details.grossTotal)}\n`;
         } else {
             text += `   Honorar .................... ${padNum(p.details.netTotal)}\n`;
-            if(p.details.courtFee > 0) text += `   GKG (${p.details.config.courtFeeLabel}) ....... ${padNum(p.details.courtFee)}\n`;
+            if(p.details.courtFee > 0) text += `   GGG (${p.details.config.courtFeeLabel}) ....... ${padNum(p.details.courtFee)}\n`;
         }
     });
     
@@ -243,7 +255,6 @@
     setTimeout(() => copied = false, 2000);
   }
 
-  // EDIT: Die essenzielle Download-Funktion für lokale Speicherung
   function downloadTextFile() {
     const text = getInvoiceText();
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -263,9 +274,11 @@
 
 <div class="max-w-[1600px] mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:h-[calc(100vh-140px)] h-auto min-h-[600px]">
   
+  <!-- LEFT: EDITOR & CONFIG -->
   <div class="lg:col-span-4 flex flex-col gap-6 lg:h-full h-[calc(100vh-120px)] overflow-hidden">
     <div class="card bg-legal-900 border-t-4 {editId ? 'border-t-orange-500' : 'border-t-legal-gold'} flex flex-col h-full overflow-hidden shadow-2xl">
       
+      <!-- Card Header -->
       <div class="p-5 border-b border-legal-700 bg-legal-850 flex justify-between items-center shrink-0">
         <div>
           <h2 class="text-lg font-bold text-white tracking-tight">
@@ -274,14 +287,16 @@
           <p class="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5 font-semibold">Eingabe & Konfiguration</p>
         </div>
         {#if editId}
-          <button onclick={resetEditor} class="text-xs text-red-400 hover:text-red-300 font-medium transition-colors px-3 py-1.5 rounded hover:bg-white/5 border border-transparent hover:border-red-900/50">
+          <button aria-label="Editor zurücksetzen" onclick={resetEditor} class="text-xs text-red-400 hover:text-red-300 font-medium transition-colors px-3 py-1.5 rounded hover:bg-white/5 border border-transparent hover:border-red-900/50">
             Abbrechen
           </button>
         {/if}
       </div>
 
+      <!-- Scrollable Form Content -->
       <div class="flex-1 overflow-y-auto p-5 custom-scrollbar space-y-6">
         
+        <!-- 1. SEARCH / DROPDOWN -->
         <div class="relative z-30" bind:this={searchWrapper}>
           <label class="label-text text-slate-300" for="search">Leistung / Barauslage</label>
           <div class="relative group">
@@ -295,12 +310,14 @@
               type="text" 
               bind:value={searchQuery} 
               onfocus={() => showDropdown = true} 
+              onclick={() => showDropdown = true}
+              oninput={() => showDropdown = true}
               placeholder="Suche (z.B. 'Klage', 'TP3A')..." 
               class="input-field pl-9 pr-8 font-medium text-white shadow-inner bg-legal-950 focus:bg-legal-950 border-legal-700" 
               autocomplete="off" 
             />
             {#if showDropdown}
-              <button class="absolute right-2 top-2.5 text-legal-500 hover:text-white p-0.5 rounded-full hover:bg-legal-700 transition-colors" onclick={() => { showDropdown = false; searchQuery = ''; }}>
+              <button aria-label="Suche leeren" class="absolute right-2 top-2.5 text-legal-500 hover:text-white p-0.5 rounded-full hover:bg-legal-700 transition-colors" onclick={() => { showDropdown = false; searchQuery = ''; }}>
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
               </button>
             {/if}
@@ -314,7 +331,7 @@
                 <ul class="py-1">
                   {#each filteredGroups as group (group.id)}
                     <li class="border-b border-legal-700/30 last:border-0">
-                      <button class="w-full flex items-center justify-between px-4 py-3 hover:bg-legal-700/30 text-left transition-colors group/header" onclick={(e) => toggleGroup(group.id, e)}>
+                      <button aria-label="Gruppe {group.label} aufklappen" class="w-full flex items-center justify-between px-4 py-3 hover:bg-legal-700/30 text-left transition-colors group/header" onclick={(e) => toggleGroup(group.id, e)}>
                         <div class="flex items-center gap-2">
                           <span class="text-xs font-bold text-legal-gold bg-legal-gold/10 px-1.5 py-0.5 rounded border border-legal-gold/20">{group.id}</span>
                           <span class="text-sm font-semibold text-slate-200">{group.label.replace(group.id + ': ', '')}</span>
@@ -327,7 +344,7 @@
                           {#each group.items as item}
                             <li class="relative">
                               <div class="absolute left-6 top-0 bottom-0 w-px bg-legal-700/40"></div>
-                              <button class="w-full text-left pl-10 pr-4 py-2 hover:bg-legal-700/50 text-slate-400 hover:text-white transition-all flex flex-col group/item relative border-l-2 border-transparent hover:border-legal-accent" onmousedown={() => selectAction(item)}>
+                              <button aria-label="Aktion {item.label} auswählen" class="w-full text-left pl-10 pr-4 py-2 hover:bg-legal-700/50 text-slate-400 hover:text-white transition-all flex flex-col group/item relative border-l-2 border-transparent hover:border-legal-accent" onmousedown={() => selectAction(item)}>
                                 <span class="text-xs font-medium text-slate-300 group-hover/item:text-white">{item.label}</span>
                                 <span class="text-[10px] text-legal-500 font-mono mt-0.5 truncate">{item.description}</span>
                               </button>
@@ -343,6 +360,7 @@
           {/if}
         </div>
 
+        <!-- DATE & LABEL -->
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="label-text text-slate-300" for="date">Datum</label>
@@ -354,6 +372,7 @@
           </div>
         </div>
 
+        <!-- VALUE & MULTIPLIER -->
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="label-text text-slate-300" for="val">{isManualExpense ? 'Betrag (CHF)' : 'Streitwert (CHF)'}</label>
@@ -376,12 +395,14 @@
           {/if}
         </div>
 
+        <!-- OPTIONS -->
         {#if !isAnyExpense}
         <div class="bg-legal-950/50 rounded border border-legal-700/50 p-4 space-y-4" transition:slide>
           
+          <!-- Einheitssatz Switch -->
           <div class="flex items-center justify-between group">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" bind:checked={editUnitRate} class="checkbox-legal">
+            <label for="chk-unitrate" class="flex items-center gap-3 cursor-pointer">
+              <input id="chk-unitrate" type="checkbox" bind:checked={editUnitRate} class="checkbox-legal">
               <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Einheitssatz</span>
             </label>
             {#if editUnitRate}
@@ -391,11 +412,32 @@
             {/if}
           </div>
 
+          <!-- TP5/6 Informationszuschlag Toggle -->
+          {#if editType === 'TP5' || editType === 'TP6'}
+            <div class="flex items-center justify-between group" transition:slide>
+              <label for="chk-info" class="flex items-center gap-3 cursor-pointer">
+                <input id="chk-info" type="checkbox" bind:checked={editHasInfoSurcharge} class="checkbox-legal">
+                <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Informationszuschlag (50%)</span>
+              </label>
+            </div>
+          {/if}
+
+          <!-- TP8 Kurzbesprechung Toggle -->
+          {#if editType === 'TP8'}
+            <div class="flex items-center justify-between group" transition:slide>
+              <label for="chk-short" class="flex items-center gap-3 cursor-pointer">
+                <input id="chk-short" type="checkbox" bind:checked={editIsShortMeeting} class="checkbox-legal">
+                <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Kurzbesprechung (&lt; 10 Min)</span>
+              </label>
+            </div>
+          {/if}
+
+          <!-- Streitgenossen (Art. 15 RATG) -->
           <div class="flex flex-col group">
             <div class="flex items-center justify-between w-full">
               <div class="flex items-center gap-2">
-                <label class="flex items-center gap-3 cursor-pointer py-1">
-                  <input type="checkbox" bind:checked={editSurchargeEnabled} class="checkbox-legal">
+                <label for="chk-surcharge" class="flex items-center gap-3 cursor-pointer py-1">
+                  <input id="chk-surcharge" type="checkbox" bind:checked={editSurchargeEnabled} class="checkbox-legal">
                   <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Streitgenossenzuschlag</span>
                 </label>
                 <div class="relative group/tooltip">
@@ -421,15 +463,16 @@
               <div transition:slide={{ duration: 200 }} class="flex justify-end mt-1.5 w-full">
                 <div class="flex items-center gap-2 bg-legal-900/30 rounded border border-legal-700/30 px-2 py-1">
                   <span class="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Weitere Personen</span>
-                  <input type="number" min="1" max="20" bind:value={editSurchargeCount} class="w-10 bg-transparent text-right font-mono text-xs text-white focus:outline-none border-b border-legal-700 focus:border-legal-accent pb-0.5" />
+                  <input type="number" aria-label="Anzahl weitere Personen" min="1" max="20" bind:value={editSurchargeCount} class="w-10 bg-transparent text-right font-mono text-xs text-white focus:outline-none border-b border-legal-700 focus:border-legal-accent pb-0.5" />
                 </div>
               </div>
             {/if}
           </div>
 
+          <!-- MwSt Switch -->
           <div class="flex items-center justify-between group">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input type="checkbox" bind:checked={editVat} class="checkbox-legal">
+            <label for="chk-vat" class="flex items-center gap-3 cursor-pointer">
+              <input id="chk-vat" type="checkbox" bind:checked={editVat} class="checkbox-legal">
               <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Mehrwertsteuer</span>
             </label>
             {#if editVat}
@@ -439,18 +482,19 @@
         </div>
         {/if}
 
-        {#if editType === 'GKG' || (editIncludeCourtFee && !isAnyExpense)}
+        <!-- GGG OPTIONS -->
+        {#if editType === 'GGG' || (editIncludeCourtFee && !isAnyExpense)}
           <div class="bg-gradient-to-br from-legal-900 to-legal-950 rounded border border-legal-700/50 p-4" transition:slide>
             <div class="pl-1 space-y-3">
               <div>
-                <label class="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block font-semibold">Verfahrensart (GKG)</label>
-                <select bind:value={editGkgColumn} class="input-field text-xs py-1.5 h-auto bg-legal-950">
-                  {#each Object.entries(GKG_LABELS) as [key, label]}<option value={key}>{label}</option>{/each}
+                <label for="ggg-select" class="text-[10px] text-slate-400 uppercase tracking-wider mb-1 block font-semibold">Verfahrensart (GGG)</label>
+                <select id="ggg-select" bind:value={editGggColumn} class="input-field text-xs py-1.5 h-auto bg-legal-950">
+                  {#each Object.entries(GGG_LABELS) as [key, label]}<option value={key}>{label}</option>{/each}
                 </select>
               </div>
               
-              <label class="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" bind:checked={editIsAppeal} class="w-3 h-3 rounded-sm border-legal-600 bg-legal-900">
+              <label for="chk-appeal" class="flex items-center gap-2 cursor-pointer">
+                <input id="chk-appeal" type="checkbox" bind:checked={editIsAppeal} class="w-3 h-3 rounded-sm border-legal-600 bg-legal-900">
                 <span class="text-xs text-slate-400">Rechtsmittel (2x Gebühr)</span>
               </label>
 
@@ -468,7 +512,7 @@
             <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Vorschau Total</span>
             <span class="text-xl font-mono font-bold text-white tabular-nums tracking-tight">{formatCurrency(previewResult.grossTotal)}</span>
           </div>
-          <button onclick={savePosition} class="btn-primary w-full shadow-legal-accent/20">
+          <button aria-label="Position speichern" onclick={savePosition} class="btn-primary w-full shadow-legal-accent/20">
             {editId ? 'Änderungen speichern' : 'Position hinzufügen'}
           </button>
         </div>
@@ -476,6 +520,7 @@
     </div>
   </div>
 
+  <!-- RIGHT: STATEMENT / INVOICE VIEW -->
   <div class="lg:col-span-8 flex flex-col lg:h-full h-[calc(100vh-120px)] overflow-hidden">
     <div class="card h-full flex flex-col bg-legal-850 border border-legal-700 shadow-2xl overflow-hidden relative">
       
@@ -488,16 +533,16 @@
           
           {#if positions.length > 0}
             <div class="flex gap-2 w-full sm:w-auto">
-              <button onclick={() => positions = []} class="btn-secondary text-red-400 hover:text-red-300 hover:border-red-900/50 hover:bg-red-900/10 flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors">
+              <button aria-label="Gesamte Liste zurücksetzen" onclick={() => positions = []} class="btn-secondary text-red-400 hover:text-red-300 hover:border-red-900/50 hover:bg-red-900/10 flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors">
                 Reset
               </button>
               
-              <button onclick={downloadTextFile} class="btn-secondary border border-legal-600 bg-legal-800 text-slate-300 hover:bg-legal-700 hover:text-white flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors shadow-sm">
+              <button aria-label="Kostennote herunterladen" onclick={downloadTextFile} class="btn-secondary border border-legal-600 bg-legal-800 text-slate-300 hover:bg-legal-700 hover:text-white flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors shadow-sm">
                 <span class="sm:hidden">TXT</span>
                 <span class="hidden sm:inline">Als .txt speichern</span>
               </button>
 
-              <button onclick={copyToClipboard} class="btn-primary bg-legal-800 hover:bg-legal-700 border border-legal-600 text-slate-200 flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors">
+              <button aria-label="In die Zwischenablage kopieren" onclick={copyToClipboard} class="btn-primary bg-legal-800 hover:bg-legal-700 border border-legal-600 text-slate-200 flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors">
                 <span class="sm:hidden">{copied ? 'Kopiert' : 'Kopieren'}</span>
                 <span class="hidden sm:inline">{copied ? 'Kopiert!' : 'In Zwischenablage kopieren'}</span>
               </button>
@@ -506,11 +551,13 @@
         </div>
       </div>
 
-      <div class="hidden sm:grid bg-legal-900/50 px-6 py-3 border-b border-legal-700 grid-cols-12 text-[10px] font-bold text-legal-500 uppercase tracking-widest shrink-0">
+      <!-- Invoice Table Header -->
+      <div class="hidden sm:grid bg-legal-900/50 pl-10 pr-[5.5rem] py-3 border-b border-legal-700 grid-cols-12 text-[10px] font-bold text-legal-500 uppercase tracking-widest shrink-0">
         <div class="col-span-8">Beschreibung</div>
         <div class="col-span-4 text-right">Betrag (CHF)</div>
       </div>
 
+      <!-- Scrollable List -->
       <div class="flex-1 overflow-y-auto custom-scrollbar p-3 sm:p-6 bg-legal-900/30">
         {#if positions.length === 0}
           <div class="h-full flex flex-col items-center justify-center text-legal-700 opacity-50">
@@ -522,13 +569,15 @@
         <div class="space-y-3 sm:space-y-1">
           {#each positions as pos, i (pos.id)}
             <div class="group relative rounded border transition-all duration-200 {editId === pos.id ? 'bg-legal-850 ring-1 ring-legal-gold border-legal-gold/50' : 'bg-legal-850/40 border-legal-800 hover:border-legal-600 sm:bg-transparent sm:border-transparent'}">
-              <div class="grid grid-cols-1 sm:grid-cols-12 px-4 py-3 cursor-pointer gap-y-3 sm:gap-y-0" role="button" tabindex="0" onclick={() => editPosition(pos)} onkeydown={(e) => e.key === 'Enter' && editPosition(pos)}>
+              <div class="grid grid-cols-1 sm:grid-cols-12 pl-4 pr-16 py-3 cursor-pointer gap-y-3 sm:gap-y-0" role="button" tabindex="0" onclick={() => editPosition(pos)} onkeydown={(e) => e.key === 'Enter' && editPosition(pos)}>
+                <!-- CONTENT -->
                 <div class="sm:col-span-8 pr-0 sm:pr-4">
                   <div class="flex items-center gap-3">
                     <span class="text-xs text-slate-500 font-mono w-6 shrink-0 pt-0.5 hidden sm:inline-block">{(i+1).toString().padStart(2, '0')}.</span>
                     <div class="flex-1 min-w-0">
                       <div class="flex justify-between sm:justify-start items-center gap-2">
                         <span class="text-sm font-semibold text-slate-200 truncate">{pos.label}</span>
+                        <!-- Date Badge Mobile -->
                         <span class="sm:hidden text-[10px] text-slate-500 font-mono bg-black/20 px-1.5 py-0.5 rounded border border-white/5">{new Date(pos.date).toLocaleDateString('de-CH').slice(0,5)}</span>
                       </div>
                       {#if pos.description}
@@ -537,6 +586,7 @@
                     </div>
                   </div>
                   
+                  <!-- TAGS -->
                   <div class="pl-0 sm:pl-9 mt-2 flex flex-wrap gap-2">
                     <span class="text-[10px] bg-legal-950 border border-legal-700 text-slate-400 px-1.5 py-0.5 rounded font-medium">{pos.type}</span>
                     <span class="hidden sm:inline-flex text-[10px] text-slate-500 font-mono border border-legal-700/50 px-1.5 py-0.5 rounded">{new Date(pos.date).toLocaleDateString('de-CH')}</span>
@@ -551,6 +601,18 @@
                       </span>
                     {/if}
 
+                    {#if pos.details.config.hasInfoSurcharge}
+                      <span class="text-[10px] text-legal-gold border border-legal-gold/20 bg-legal-gold/5 px-1.5 py-0.5 rounded font-mono">
+                        + Info (50%)
+                      </span>
+                    {/if}
+
+                    {#if pos.details.config.isShortMeeting}
+                      <span class="text-[10px] text-blue-400 border border-blue-400/20 bg-blue-400/5 px-1.5 py-0.5 rounded font-mono">
+                        &lt; 10 Min
+                      </span>
+                    {/if}
+
                     {#if pos.details.config.streitgenossenCount > 0}
                       <span class="text-[10px] text-legal-accent border border-legal-accent/20 bg-legal-accent/5 px-1.5 py-0.5 rounded font-mono">
                         +{(pos.details.config.surchargePercent * 100).toFixed(0)}% ({pos.details.config.streitgenossenCount} Streitgenossen)
@@ -559,6 +621,7 @@
                   </div>
                 </div>
 
+                <!-- AMOUNT -->
                 <div class="sm:col-span-4 flex sm:flex-col justify-between sm:justify-start items-end border-t border-white/5 sm:border-0 pt-2 sm:pt-0">
                   {#if pos.details.config.isExpense}
                     <span class="text-xs text-blue-400/70 sm:hidden">Barauslage</span>
@@ -568,7 +631,7 @@
                   {:else}
                     <div class="text-xs text-slate-500 sm:hidden flex flex-col gap-0.5">
                       <span>Honorar</span>
-                      {#if pos.details.courtFee > 0}<span>+ GKG</span>{/if}
+                      {#if pos.details.courtFee > 0}<span>+ GGG</span>{/if}
                     </div>
                     <div class="text-right">
                       <span class="font-mono text-sm font-semibold text-slate-200 tabular-nums">{formatCurrency(pos.details.netTotal)}</span>
@@ -580,15 +643,17 @@
                 </div>
               </div>
 
-              <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onclick={(e) => toggleDetails(pos.id, e)} class="p-1.5 bg-legal-900 text-slate-400 hover:text-legal-gold border border-legal-700 rounded shadow-sm" title="Details">
+              <!-- ACTIONS -->
+              <div class="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button aria-label="Details einblenden" onclick={(e) => toggleDetails(pos.id, e)} class="p-1.5 bg-legal-900 text-slate-400 hover:text-legal-gold border border-legal-700 rounded shadow-sm" title="Details">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" /><path fill-rule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 8.201 2.66 9.336 6.41.147.481.147.99 0 1.472C18.201 14.34 14.257 17 10 17c-4.257 0-8.201-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd" /></svg>
                 </button>
-                <button onclick={(e) => { e.stopPropagation(); removePosition(pos.id); }} class="p-1.5 bg-legal-900 text-slate-400 hover:text-red-400 border border-legal-700 rounded shadow-sm" title="Löschen">
+                <button aria-label="Position löschen" onclick={(e) => { e.stopPropagation(); removePosition(pos.id); }} class="p-1.5 bg-legal-900 text-slate-400 hover:text-red-400 border border-legal-700 rounded shadow-sm" title="Löschen">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-3.5 h-3.5"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
                 </button>
               </div>
 
+              <!-- Expanded Details -->
               {#if expandedId === pos.id}
                 <div transition:slide class="mx-4 mb-3 p-3 bg-black/20 rounded border border-legal-700/30 text-xs">
                   {#if pos.details.config.isExpense}
@@ -623,8 +688,9 @@
         </div>
       </div>
 
+      <!-- Footer / Totals -->
       <div class="bg-legal-900 p-4 sm:p-6 border-t border-legal-700 shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.3)] z-20">
-        <div class="grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-2 max-w-sm ml-auto">
+        <div class="grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-2 max-w-sm ml-auto sm:pr-16">
           <div class="text-sm text-slate-400 text-right">Netto Honorar</div>
           <div class="text-sm font-mono text-slate-200 text-right tabular-nums font-medium">{formatCurrency(totalNet)}</div>
           

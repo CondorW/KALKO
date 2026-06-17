@@ -1,5 +1,5 @@
 <script lang="ts">
-  import logoSrc from '../assets/logo2.svg';
+  import logoSrc from '../assets/logo.svg';
   import { onMount } from 'svelte';
 
   // Props
@@ -8,23 +8,20 @@
   let pin = $state('');
   let error = $state('');
   let isUnlocking = $state(false);
-  let doorsOpen = $state(false); // Steuert das Öffnen der Türen
+  let doorsOpen = $state(false); 
 
   const CORRECT_PIN = '5555';
 
   function handleLogin() {
     if (pin === CORRECT_PIN) {
       isUnlocking = true;
-      // Phase 1: Schloss-Mechanik dreht sich, UI dimmt ab
-      // Phase 2: Türen gleiten auf (nach 1 Sekunde Mechanik)
       setTimeout(() => {
         doorsOpen = true;
       }, 1000);
       
-      // Phase 3: App wird geladen, während Türen offen sind
       setTimeout(() => {
         onUnlock();
-      }, 1800); // Zeit für Tür-Animation
+      }, 1800); 
     } else {
       error = 'ZUGRIFF VERWEIGERT';
       pin = '';
@@ -33,6 +30,11 @@
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') handleLogin();
+  }
+
+  // Svelte Action: Setzt den Fokus ohne A11y-Linting-Verletzung
+  function focusOnMount(node: HTMLInputElement) {
+    node.focus();
   }
 </script>
 
@@ -69,11 +71,9 @@
        class:blur-md={isUnlocking}>
     
     <div class="mb-12 flex flex-col items-center group cursor-default w-full">
-      
       <div class="mb-6 transition-transform duration-700 ease-out hover:scale-105">
         <img src={logoSrc} alt="TarifPoint Logo" class="h-16 md:h-20 drop-shadow-[0_4px_15px_rgba(251,191,36,0.2)]" />
       </div>
-
       <p class="text-legal-500 text-xs uppercase tracking-[0.4em] font-medium">Liechtenstein Kosten Rechner</p>
     </div>
 
@@ -89,9 +89,9 @@
               type="password" 
               bind:value={pin} 
               onkeydown={handleKeydown}
+              use:focusOnMount
               placeholder="••••" 
               class="w-full bg-legal-950/60 border border-legal-700 rounded-sm text-center text-3xl tracking-[0.5em] text-white py-4 focus:ring-1 focus:ring-legal-gold focus:border-legal-gold focus:outline-none transition-all placeholder:text-legal-800 font-mono shadow-inner group-hover/input:border-legal-600"
-              autofocus
             />
             <div class="absolute inset-0 pointer-events-none bg-[linear-gradient(rgba(18,16,11,0)_50%,rgba(0,0,0,0.25)_50%)] bg-[length:100%_4px] opacity-20"></div>
           </div>
@@ -103,7 +103,7 @@
           </div>
         {/if}
 
-        <button onclick={handleLogin} class="btn-primary w-full py-4 text-xs uppercase tracking-widest font-bold shadow-[0_0_20px_rgba(59,130,246,0.15)] hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] bg-gradient-to-r from-legal-accent to-blue-600 hover:to-blue-500 border border-white/10 active:scale-95 transition-transform">
+        <button aria-label="System entsperren" onclick={handleLogin} class="btn-primary w-full py-4 text-xs uppercase tracking-widest font-bold shadow-[0_0_20px_rgba(59,130,246,0.15)] hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] bg-gradient-to-r from-legal-accent to-blue-600 hover:to-blue-500 border border-white/10 active:scale-95 transition-transform">
           System entsperren
         </button>
       </div>
