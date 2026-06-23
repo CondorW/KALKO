@@ -85,7 +85,7 @@ export const SERVICE_GROUPS: ServiceGroup[] = [
     id: 'EXP', label: 'Barauslagen & Gebühren', 
     items: [
       { id: 'BARAUSLAGE', label: 'Barauslage', description: 'Manuelle Spesen und Barauslagen', keywords: ['spesen', 'auslage', 'porto'] },
-      { id: 'GGG', label: 'Gerichtsgebühr (GGG)', description: 'Staatliche Gerichtsgebühren', keywords: ['ggg', 'gericht', 'gebühr'], gggColumn: 'zivil' }
+      { id: 'GGG', label: 'Gerichtsgebühr (GGG)', description: 'Gerichtsgebühren', keywords: ['ggg', 'gericht', 'gebühr'], gggColumn: 'zivil' }
     ]
   }
 ];

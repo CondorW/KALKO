@@ -213,6 +213,7 @@
   }, 0));
   let totalGross = $derived(totalNet + totalVat + totalExpenses);
 
+  // Fallback: Reiner Text für einfache Text-Editoren oder den TXT-Download
   function getInvoiceText(): string {
     const padNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 }).padStart(12, ' ');
     let text = `KOSTENNOTE\n--------------------------------\n`;
@@ -248,11 +249,91 @@
     return text;
   }
 
+  // NEU: Baut ein sauberes HTML-Gerüst auf, das von Word, Outlook etc. als native Tabelle eingelesen wird.
+  function getInvoiceHTML(): string {
+    const formatNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 });
+    
+    let html = `<table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11pt;">`;
+    html += `<thead><tr>`;
+    html += `<th style="text-align: left; border-bottom: 2px solid #000; padding: 6px 8px;">Pos.</th>`;
+    html += `<th style="text-align: left; border-bottom: 2px solid #000; padding: 6px 8px;">Datum</th>`;
+    html += `<th style="text-align: left; border-bottom: 2px solid #000; padding: 6px 8px;">Beschreibung</th>`;
+    html += `<th style="text-align: right; border-bottom: 2px solid #000; padding: 6px 8px;">Betrag (CHF)</th>`;
+    html += `</tr></thead><tbody>`;
+
+    positions.forEach((p, i) => {
+        const d = new Date(p.date);
+        const dateStr = d.toLocaleDateString('de-CH');
+        
+        let extraTags = '';
+        if (p.details.config.isShortMeeting) extraTags += ' [&lt;10 Min]'; // HTML escaped < 
+        if (p.details.config.hasInfoSurcharge) extraTags += ' [+Info]';
+
+        let descHtml = `<strong>${p.label}</strong> <span style="color: #666; font-size: 0.9em;">${extraTags}</span>`;
+        
+        if (p.type === 'TP3A_Session') {
+            descHtml += `<br><span style="color: #555;">Dauer: ${p.multiplier} Std.</span>`;
+        } else if ((p.details.config.isTimeBased || p.multiplier > 1) && !p.details.config.isExpense) {
+            descHtml += `<br><span style="color: #555;">Menge/Dauer: ${p.multiplier}</span>`;
+        }
+
+        let amountHtml = '';
+        if (p.details.config.isExpense) {
+            amountHtml = formatNum(p.details.grossTotal);
+            descHtml += `<br><span style="color: #555;">Barauslage</span>`;
+        } else {
+            amountHtml = formatNum(p.details.netTotal);
+            descHtml += `<br><span style="color: #555;">Honorar</span>`;
+            if (p.details.courtFee > 0) {
+                amountHtml += `<br><span style="color: #555;">+ ${formatNum(p.details.courtFee)}</span>`;
+                descHtml += `<br><span style="color: #555;">GGG (${p.details.config.courtFeeLabel})</span>`;
+            }
+        }
+
+        html += `<tr>`;
+        html += `<td style="padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee;">${i+1}.</td>`;
+        html += `<td style="padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee;">${dateStr}</td>`;
+        html += `<td style="padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee;">${descHtml}</td>`;
+        html += `<td style="padding: 6px 8px; vertical-align: top; text-align: right; border-bottom: 1px solid #eee;">${amountHtml}</td>`;
+        html += `</tr>`;
+    });
+
+    html += `</tbody><tfoot>`;
+    html += `<tr><td colspan="3" style="text-align: right; padding: 8px 8px 4px; padding-top: 16px;">Netto Honorar</td><td style="text-align: right; padding: 8px 8px 4px; padding-top: 16px;">${formatNum(totalNet)}</td></tr>`;
+    html += `<tr><td colspan="3" style="text-align: right; padding: 4px 8px;">USt (8.1%)</td><td style="text-align: right; padding: 4px 8px;">${formatNum(totalVat)}</td></tr>`;
+    html += `<tr><td colspan="3" style="text-align: right; padding: 4px 8px;">Barauslagen (inkl. GGG)</td><td style="text-align: right; padding: 4px 8px;">${formatNum(totalExpenses)}</td></tr>`;
+    html += `<tr><td colspan="3" style="text-align: right; padding: 8px; font-weight: bold; border-top: 2px solid #000;">TOTAL</td><td style="text-align: right; padding: 8px; font-weight: bold; border-top: 2px solid #000;">${formatNum(totalGross)}</td></tr>`;
+    html += `</tfoot></table>`;
+    
+    return html;
+  }
+
   async function copyToClipboard() {
     const text = getInvoiceText();
-    await navigator.clipboard.writeText(text);
-    copied = true;
-    setTimeout(() => copied = false, 2000);
+    const html = getInvoiceHTML();
+
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        // Verpackt die Daten als ClipboardItem, um Text und HTML parallel abzulegen
+        const htmlBlob = new Blob([html], { type: 'text/html' });
+        const textBlob = new Blob([text], { type: 'text/plain' });
+        const clipboardItem = new ClipboardItem({
+          'text/html': htmlBlob,
+          'text/plain': textBlob
+        });
+        await navigator.clipboard.write([clipboardItem]);
+      } else {
+        // Fallback für Browser, die die ClipboardItem-API blockieren
+        await navigator.clipboard.writeText(text);
+      }
+      copied = true;
+      setTimeout(() => copied = false, 2000);
+    } catch (err) {
+      console.error('Clipboard write failed, using fallback', err);
+      await navigator.clipboard.writeText(text);
+      copied = true;
+      setTimeout(() => copied = false, 2000);
+    }
   }
 
   function downloadTextFile() {
