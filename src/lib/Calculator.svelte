@@ -6,20 +6,61 @@
   let positions = $state<Position[]>([]);
   let positionToEdit = $state<Position | null>(null);
   let copied = $state(false);
+  
+  // Globaler Einheitssatz State
+  let globalEHSActive = $state(true);
 
-  let totalNet = $derived(positions.reduce((sum, p) => p.details.config.isExpense ? sum : sum + p.details.netTotal, 0));
-  let totalVat = $derived(positions.reduce((sum, p) => sum + p.details.vatAmount, 0));
-  let totalExpenses = $derived(positions.reduce((sum, p) => {
-      if (p.type === 'GGG' || p.type === 'BARAUSLAGE') return sum + p.details.grossTotal;
-      return sum + p.details.courtFee;
-  }, 0));
-  let totalGross = $derived(totalNet + totalVat + totalExpenses);
+  let sortedPositions = $derived([...positions].sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    if (dateA !== dateB) return dateA - dateB; 
+    return b.details.grossTotal - a.details.grossTotal; 
+  }));
 
-  let totals = $derived({
-    net: totalNet,
-    vat: totalVat,
-    expenses: totalExpenses,
-    gross: totalGross
+  let totals = $derived.by(() => {
+      let maxStreitwert = 0;
+      let ehsBasis = 0;
+      let netPositions = 0;
+      let vatFromPositions = 0;
+      let barauslagen = 0;
+      let ggg = 0;
+
+      for (const p of positions) {
+          maxStreitwert = Math.max(maxStreitwert, p.value);
+          if (p.details.config.isExpense) {
+              if (p.type === 'BARAUSLAGE') barauslagen += p.details.grossTotal;
+              if (p.type === 'GGG') ggg += p.details.grossTotal;
+          } else {
+              netPositions += p.details.netTotal;
+              vatFromPositions += p.details.vatAmount;
+              ggg += p.details.courtFee;
+              
+              // EHS berechtigt (Art. 23 RATG): TP1, 2, 3, 4, 7
+              if (['TP1', 'TP2', 'TP3A', 'TP3B', 'TP3C', 'TP3A_Session', 'TP7'].includes(p.type as string)) {
+                  ehsBasis += p.details.netTotal;
+              }
+          }
+      }
+
+      let ehsPercent = maxStreitwert > 15000 ? 0.4 : 0.5;
+      let ehs = globalEHSActive ? (ehsBasis * ehsPercent) : 0;
+      
+      let hasVat = positions.some(p => p.details.vatAmount > 0);
+      let ehsVat = (globalEHSActive && hasVat) ? ehs * 0.081 : 0;
+
+      let vat = vatFromPositions + ehsVat;
+      let gross = netPositions + ehs + vat + barauslagen + ggg;
+
+      return {
+          netPositions,
+          ehs,
+          ehsPercent: ehsPercent * 100,
+          ehsActive: globalEHSActive,
+          vat,
+          barauslagen,
+          ggg,
+          gross
+      };
   });
 
   function handleSave(pos: Position) {
@@ -50,94 +91,94 @@
     positionToEdit = null;
   }
 
+  function handleToggleEHS() {
+    globalEHSActive = !globalEHSActive;
+  }
+
   function getInvoiceText(): string {
     const padNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 }).padStart(12, ' ');
     let text = `KOSTENNOTE\n--------------------------------\n`;
-    positions.forEach((p, i) => {
+    
+    let displayIndex = 1;
+    sortedPositions.forEach((p) => {
+        if (p.type === 'GGG') return;
+
         const d = new Date(p.date);
         const dateStr = d.toLocaleDateString('de-CH');
         
-        let extraTags = '';
-        if (p.details.config.isShortMeeting) extraTags += ' [<10 Min]';
-        if (p.details.config.hasInfoSurcharge) extraTags += ' [+Info]';
-
-        text += `${i+1}. [${dateStr}] ${p.label}${extraTags}\n`;
+        let amount = p.type === 'BARAUSLAGE' ? p.details.grossTotal : p.details.netTotal;
+        text += `${displayIndex}. [${dateStr}] ${p.label}\n`;
+        text += `   Betrag ....................... ${padNum(amount)}\n`;
         
-        if (p.type === 'TP3A_Session') {
-            text += `   Dauer: ${p.multiplier} Std.\n`;
-        } else if ((p.details.config.isTimeBased || p.multiplier > 1) && !p.details.config.isExpense) {
-            text += `   Menge/Dauer: ${p.multiplier}\n`;
-        }
-
-        if (p.details.config.isExpense) {
-            text += `   Barauslage ................. ${padNum(p.details.grossTotal)}\n`;
-        } else {
-            text += `   Honorar .................... ${padNum(p.details.netTotal)}\n`;
-            if(p.details.courtFee > 0) text += `   GGG (${p.details.config.courtFeeLabel}) ....... ${padNum(p.details.courtFee)}\n`;
-        }
+        displayIndex++;
     });
     
     text += `--------------------------------\n`;
-    text += `Netto Honorar ................ ${padNum(totalNet)}\n`;
-    text += `USt (8.1%) ................... ${padNum(totalVat)}\n`;
-    text += `Barauslagen (inkl. GGG) ...... ${padNum(totalExpenses)}\n`;
-    text += `TOTAL ........................ ${padNum(totalGross)}`;
+    text += `Netto ........................ ${padNum(totals.netPositions)}\n`;
+    
+    if (totals.ehsActive && totals.ehs > 0) {
+        text += `Einheitssatz (${totals.ehsPercent}%) ........... ${padNum(totals.ehs)}\n`;
+    }
+
+    text += `MWST (8.1%) .................. ${padNum(totals.vat)}\n`;
+    
+    if (totals.barauslagen > 0) {
+        text += `Barauslagen .................. ${padNum(totals.barauslagen)}\n`;
+    }
+    if (totals.ggg > 0) {
+        text += `Gerichtsgebühren (GGG) ....... ${padNum(totals.ggg)}\n`;
+    }
+    text += `GESAMT ....................... ${padNum(totals.gross)}`;
     return text;
   }
 
   function getInvoiceHTML(): string {
     const formatNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 });
     
-    let html = `<table style="width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 11pt;">`;
+    let html = `<table style="width: 100%; border-collapse: collapse; font-family: sans-serif; font-size: 11pt;">`;
     html += `<thead><tr>`;
-    html += `<th style="text-align: left; border-bottom: 2px solid #000; padding: 6px 8px;">Pos.</th>`;
-    html += `<th style="text-align: left; border-bottom: 2px solid #000; padding: 6px 8px;">Datum</th>`;
-    html += `<th style="text-align: left; border-bottom: 2px solid #000; padding: 6px 8px;">Beschreibung</th>`;
-    html += `<th style="text-align: right; border-bottom: 2px solid #000; padding: 6px 8px;">Betrag (CHF)</th>`;
+    html += `<th style="text-align: left; border-bottom: 1px solid black; padding: 4px;">Pos.</th>`;
+    html += `<th style="text-align: left; border-bottom: 1px solid black; padding: 4px;">Datum</th>`;
+    html += `<th style="text-align: left; border-bottom: 1px solid black; padding: 4px;">Beschreibung</th>`;
+    html += `<th style="text-align: right; border-bottom: 1px solid black; padding: 4px;">Betrag</th>`;
     html += `</tr></thead><tbody>`;
 
-    positions.forEach((p, i) => {
+    let displayIndex = 1;
+    sortedPositions.forEach((p) => {
+        if (p.type === 'GGG') return;
+
         const d = new Date(p.date);
         const dateStr = d.toLocaleDateString('de-CH');
         
-        let extraTags = '';
-        if (p.details.config.isShortMeeting) extraTags += ' [&lt;10 Min]';
-        if (p.details.config.hasInfoSurcharge) extraTags += ' [+Info]';
-
-        let descHtml = `<strong>${p.label}</strong> <span style="color: #666; font-size: 0.9em;">${extraTags}</span>`;
-        
-        if (p.type === 'TP3A_Session') {
-            descHtml += `<br><span style="color: #555;">Dauer: ${p.multiplier} Std.</span>`;
-        } else if ((p.details.config.isTimeBased || p.multiplier > 1) && !p.details.config.isExpense) {
-            descHtml += `<br><span style="color: #555;">Menge/Dauer: ${p.multiplier}</span>`;
-        }
-
-        let amountHtml = '';
-        if (p.details.config.isExpense) {
-            amountHtml = formatNum(p.details.grossTotal);
-            descHtml += `<br><span style="color: #555;">Barauslage</span>`;
-        } else {
-            amountHtml = formatNum(p.details.netTotal);
-            descHtml += `<br><span style="color: #555;">Honorar</span>`;
-            if (p.details.courtFee > 0) {
-                amountHtml += `<br><span style="color: #555;">+ ${formatNum(p.details.courtFee)}</span>`;
-                descHtml += `<br><span style="color: #555;">GGG (${p.details.config.courtFeeLabel})</span>`;
-            }
-        }
+        let amount = p.type === 'BARAUSLAGE' ? p.details.grossTotal : p.details.netTotal;
 
         html += `<tr>`;
-        html += `<td style="padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee;">${i+1}.</td>`;
-        html += `<td style="padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee;">${dateStr}</td>`;
-        html += `<td style="padding: 6px 8px; vertical-align: top; border-bottom: 1px solid #eee;">${descHtml}</td>`;
-        html += `<td style="padding: 6px 8px; vertical-align: top; text-align: right; border-bottom: 1px solid #eee;">${amountHtml}</td>`;
+        html += `<td style="padding: 4px; vertical-align: top;">${displayIndex}.</td>`;
+        html += `<td style="padding: 4px; vertical-align: top;">${dateStr}</td>`;
+        html += `<td style="padding: 4px; vertical-align: top;">${p.label}</td>`;
+        html += `<td style="padding: 4px; vertical-align: top; text-align: right;">${formatNum(amount)}</td>`;
         html += `</tr>`;
+
+        displayIndex++;
     });
 
     html += `</tbody><tfoot>`;
-    html += `<tr><td colspan="3" style="text-align: right; padding: 8px 8px 4px; padding-top: 16px;">Netto Honorar</td><td style="text-align: right; padding: 8px 8px 4px; padding-top: 16px;">${formatNum(totalNet)}</td></tr>`;
-    html += `<tr><td colspan="3" style="text-align: right; padding: 4px 8px;">USt (8.1%)</td><td style="text-align: right; padding: 4px 8px;">${formatNum(totalVat)}</td></tr>`;
-    html += `<tr><td colspan="3" style="text-align: right; padding: 4px 8px;">Barauslagen (inkl. GGG)</td><td style="text-align: right; padding: 4px 8px;">${formatNum(totalExpenses)}</td></tr>`;
-    html += `<tr><td colspan="3" style="text-align: right; padding: 8px; font-weight: bold; border-top: 2px solid #000;">TOTAL</td><td style="text-align: right; padding: 8px; font-weight: bold; border-top: 2px solid #000;">${formatNum(totalGross)}</td></tr>`;
+    html += `<tr><td colspan="4" style="padding: 8px;"></td></tr>`;
+    html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">Netto</td><td style="text-align: right; padding: 4px;">${formatNum(totals.netPositions)}</td></tr>`;
+    
+    if (totals.ehsActive && totals.ehs > 0) {
+        html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">Einheitssatz (${totals.ehsPercent}%)</td><td style="text-align: right; padding: 4px;">${formatNum(totals.ehs)}</td></tr>`;
+    }
+
+    html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">MWST (8.1%)</td><td style="text-align: right; padding: 4px;">${formatNum(totals.vat)}</td></tr>`;
+    
+    if (totals.barauslagen > 0) {
+        html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">Barauslagen</td><td style="text-align: right; padding: 4px;">${formatNum(totals.barauslagen)}</td></tr>`;
+    }
+    if (totals.ggg > 0) {
+        html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">Gerichtsgebühren (GGG)</td><td style="text-align: right; padding: 4px;">${formatNum(totals.ggg)}</td></tr>`;
+    }
+    html += `<tr><td colspan="3" style="text-align: right; padding: 4px; font-weight: bold;">GESAMT</td><td style="text-align: right; padding: 4px; font-weight: bold;">${formatNum(totals.gross)}</td></tr>`;
     html += `</tfoot></table>`;
     
     return html;
@@ -194,7 +235,7 @@
   
   <div class="lg:col-span-8 flex flex-col lg:h-full h-[calc(100vh-120px)] overflow-hidden">
     <CalculatorStatement 
-      {positions} 
+      positions={sortedPositions} 
       editId={positionToEdit?.id ?? null} 
       {totals} 
       {copied} 
@@ -202,7 +243,8 @@
       onRemove={handleRemove} 
       onReset={handleReset} 
       onCopy={handleCopy} 
-      onDownload={handleDownload} 
+      onDownload={handleDownload}
+      onToggleEHS={handleToggleEHS}
     />
   </div>
 </div>

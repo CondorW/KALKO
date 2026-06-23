@@ -1,6 +1,5 @@
 <script lang="ts">
   import logoSrc from '../assets/logo.svg';
-  import { onMount } from 'svelte';
 
   // Props
   let { onUnlock } = $props<{ onUnlock: () => void }>();
@@ -84,6 +83,7 @@
         <div class="text-center">
           <label for="pin" class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-3 block">Sicherheits-PIN</label>
           <div class="relative group/input">
+            <!-- Einsatz der Svelte Action anstelle von autofocus -->
             <input 
               id="pin"
               type="password" 

@@ -38,20 +38,17 @@ export interface Position {
 
 export interface CalculationResult {
   baseFee: number;
-  unitRateAmount: number;
   surchargeAmount: number;
   courtFee: number; 
   netTotal: number;
   vatAmount: number;
   grossTotal: number;
   config: {
-    hasUnitRate: boolean;
     streitgenossenCount: number; 
     surchargePercent: number;    
     isForeign: boolean;
     isTimeBased: boolean;
     isExpense: boolean; 
-    ehsLabel: string;
     courtFeeLabel?: string;
     hasInfoSurcharge: boolean; 
     isShortMeeting: boolean;   
@@ -85,7 +82,7 @@ export const SERVICE_GROUPS: ServiceGroup[] = [
     id: 'EXP', label: 'Barauslagen & Gebühren', 
     items: [
       { id: 'BARAUSLAGE', label: 'Barauslage', description: 'Manuelle Spesen und Barauslagen', keywords: ['spesen', 'auslage', 'porto'] },
-      { id: 'GGG', label: 'Gerichtsgebühr (GGG)', description: 'Gerichtsgebühren', keywords: ['ggg', 'gericht', 'gebühr'], gggColumn: 'zivil' }
+      { id: 'GGG', label: 'Gerichtsgebühr (GGG)', description: 'Staatliche Gerichtsgebühren', keywords: ['ggg', 'gericht', 'gebühr'], gggColumn: 'zivil' }
     ]
   }
 ];
@@ -96,7 +93,6 @@ export function calculateFees(
   gggColumn: GGG_COLUMN | undefined,
   isAppeal: boolean, 
   multiplier: number = 1,
-  hasUnitRate: boolean,
   streitgenossenCount: number, 
   isForeign: boolean,
   includeCourtFee: boolean,
@@ -126,23 +122,13 @@ export function calculateFees(
     totalBase += (totalBase * 0.5);
   }
 
-  // --- Einheitssatz (EHS) ---
-  let unitRateAmount = 0;
-  let ehsPercentage = safeValue <= 15000 ? 0.50 : 0.40;
-  
-  if (hasUnitRate && !isExpense) {
-    unitRateAmount = totalBase * ehsPercentage;
-  }
-
-  const subTotalForSurcharge = totalBase + unitRateAmount;
-
   // --- Genossenzuschlag (Art. 15 RATG) ---
   let surchargeAmount = 0;
   let surchargePercent = 0;
   
   if (streitgenossenCount > 0 && !isExpense) {
     surchargePercent = Math.min(0.50, 0.10 + (streitgenossenCount - 1) * 0.05);
-    surchargeAmount = subTotalForSurcharge * surchargePercent;
+    surchargeAmount = totalBase * surchargePercent;
   }
 
   // --- Gerichtsgebühren (GGG) ---
@@ -177,7 +163,7 @@ export function calculateFees(
   }
 
   // --- Summen ---
-  const netTotal = totalBase + unitRateAmount + surchargeAmount;
+  const netTotal = totalBase + surchargeAmount;
   
   let vatAmount = 0;
   if (!isForeign && !isExpense) {
@@ -188,20 +174,17 @@ export function calculateFees(
 
   return {
     baseFee: totalBase,
-    unitRateAmount,
     surchargeAmount,
     courtFee,
     netTotal,
     vatAmount,
     grossTotal,
     config: {
-      hasUnitRate, 
       streitgenossenCount, 
       surchargePercent, 
       isForeign, 
       isTimeBased: ['TP7', 'TP8', 'TP9', 'TP3A_Session'].includes(type as string),
       isExpense,
-      ehsLabel: (ehsPercentage * 100).toFixed(0) + '%',
       courtFeeLabel,
       hasInfoSurcharge,
       isShortMeeting

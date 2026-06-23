@@ -11,7 +11,6 @@
 
   const today = new Date().toISOString().split('T')[0];
 
-  // Local State
   let editId = $state<string | null>(null);
   let editDate = $state(today);
   let editValue = $state(50000);
@@ -19,7 +18,6 @@
   let editGggColumn = $state<GGG_COLUMN | undefined>('zivil');
   let editIsAppeal = $state(false);
   let editMultiplier = $state(1);
-  let editUnitRate = $state(true);
   let editSurchargeEnabled = $state(false);
   let editSurchargeCount = $state(1); 
   let editHasInfoSurcharge = $state(false); 
@@ -34,7 +32,6 @@
   let expandedGroups = $state(new Set<string>());
   let searchWrapper = $state<HTMLElement | null>(null);
 
-  // Sync Prop to Local State
   $effect(() => {
     if (positionToEdit) {
       if (editId !== positionToEdit.id) {
@@ -45,7 +42,6 @@
         editGggColumn = positionToEdit.gggColumn;
         editIsAppeal = !!positionToEdit.isAppeal;
         editMultiplier = positionToEdit.multiplier;
-        editUnitRate = positionToEdit.details.config.hasUnitRate;
 
         const count = positionToEdit.details.config.streitgenossenCount;
         if (count > 0) {
@@ -115,7 +111,7 @@
   let safeStreitgenossenCount = $derived(editSurchargeEnabled ? Math.max(1, editSurchargeCount) : 0);
 
   let previewResult = $derived(calculateFees(
-    safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, editIncludeCourtFee, editHasInfoSurcharge, editIsShortMeeting
+    safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, safeStreitgenossenCount, !editVat, editIncludeCourtFee, editHasInfoSurcharge, editIsShortMeeting
   ));
 
   function selectAction(item: ExtendedActionItem) {
@@ -129,10 +125,7 @@
     editIncludeCourtFee = false;
     
     if (item.id === 'BARAUSLAGE' || item.id === 'GGG') {
-       editUnitRate = false;
        editSurchargeEnabled = false;
-    } else {
-       editUnitRate = true;
     }
     editHasInfoSurcharge = false;
     editIsShortMeeting = false;
@@ -141,7 +134,7 @@
   function savePosition() {
     let finalLabel = editLabel.trim() || TP_LABELS[editType as string] || editType;
     const details = calculateFees(
-        safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, false, editHasInfoSurcharge, editIsShortMeeting
+        safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, safeStreitgenossenCount, !editVat, false, editHasInfoSurcharge, editIsShortMeeting
     );
 
     const posData: Position = {
@@ -169,7 +162,6 @@
     showDropdown = false;
     editIncludeCourtFee = false;
     editVat = true; 
-    editUnitRate = true;
     editSurchargeEnabled = false;
     editSurchargeCount = 1;
     editHasInfoSurcharge = false;
@@ -299,18 +291,6 @@
 
     {#if !isAnyExpense}
     <div class="bg-legal-950/50 rounded border border-legal-700/50 p-4 space-y-4" transition:slide>
-      
-      <div class="flex items-center justify-between group">
-        <label for="chk-unitrate" class="flex items-center gap-3 cursor-pointer">
-          <input id="chk-unitrate" type="checkbox" bind:checked={editUnitRate} class="checkbox-legal">
-          <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Einheitssatz</span>
-        </label>
-        {#if editUnitRate}
-          <span transition:fade class="text-xs font-mono text-legal-gold bg-legal-gold/10 px-2 py-0.5 rounded border border-legal-gold/20 tabular-nums">
-            {previewResult.config.ehsLabel} <span class="opacity-40 mx-1">|</span> {formatCurrency(previewResult.unitRateAmount)}
-          </span>
-        {/if}
-      </div>
 
       {#if editType === 'TP5' || editType === 'TP6'}
         <div class="flex items-center justify-between group" transition:slide>
@@ -404,8 +384,15 @@
 
     <div class="p-5 border-t border-legal-700 bg-legal-900 z-10 sticky bottom-0 -mx-5 -mb-5">
       <div class="flex justify-between items-center mb-4">
-        <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Vorschau Total</span>
-        <span class="text-xl font-mono font-bold text-white tabular-nums tracking-tight">{formatCurrency(previewResult.grossTotal)}</span>
+        <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Positions-Total</span>
+        <span class="text-xl font-mono font-bold text-white tabular-nums tracking-tight">
+          <!-- Zeige Total plus temporär generierte Surcharges (wie Info-Zuschlag) an -->
+          {#if editType !== 'BARAUSLAGE' && editType !== 'GGG'}
+            {formatCurrency(previewResult.netTotal)}
+          {:else}
+            {formatCurrency(previewResult.grossTotal)}
+          {/if}
+        </span>
       </div>
       <button aria-label="Position speichern" onclick={savePosition} class="btn-primary w-full shadow-legal-accent/20">
         {editId ? 'Änderungen speichern' : 'Position hinzufügen'}

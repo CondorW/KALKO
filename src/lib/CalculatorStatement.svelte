@@ -2,16 +2,17 @@
   import { formatCurrency, type Position } from '../logic';
   import { slide } from 'svelte/transition';
 
-  let { positions, editId, totals, copied, onEdit, onRemove, onReset, onCopy, onDownload } = $props<{
+  let { positions, editId, totals, copied, onEdit, onRemove, onReset, onCopy, onDownload, onToggleEHS } = $props<{
     positions: Position[];
     editId: string | null;
-    totals: { net: number; vat: number; expenses: number; gross: number };
+    totals: { netPositions: number; ehs: number; ehsPercent: number; ehsActive: boolean; vat: number; barauslagen: number; ggg: number; gross: number };
     copied: boolean;
     onEdit: (pos: Position) => void;
     onRemove: (id: string) => void;
     onReset: () => void;
     onCopy: () => void;
     onDownload: () => void;
+    onToggleEHS: () => void;
   }>();
 
   let expandedId = $state<string | null>(null);
@@ -33,13 +34,20 @@
       
       {#if positions.length > 0}
         <div class="flex gap-2 w-full sm:w-auto">
+          <button aria-label="Einheitssatz umschalten" onclick={onToggleEHS} class="btn-secondary border bg-legal-800 text-slate-300 hover:bg-legal-700 hover:text-white flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors shadow-sm {totals.ehsActive ? 'border-legal-gold ring-1 ring-legal-gold/50 text-legal-gold' : 'border-legal-600'}">
+            <span class="sm:hidden">EHS</span>
+            <span class="hidden sm:inline">Einheitssatz {totals.ehsActive ? 'AN' : 'AUS'}</span>
+          </button>
+
           <button aria-label="Gesamte Liste zurücksetzen" onclick={onReset} class="btn-secondary text-red-400 hover:text-red-300 hover:border-red-900/50 hover:bg-red-900/10 flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors">
             Reset
           </button>
+          
           <button aria-label="Kostennote herunterladen" onclick={onDownload} class="btn-secondary border border-legal-600 bg-legal-800 text-slate-300 hover:bg-legal-700 hover:text-white flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors shadow-sm">
             <span class="sm:hidden">TXT</span>
             <span class="hidden sm:inline">Als .txt speichern</span>
           </button>
+
           <button aria-label="In die Zwischenablage kopieren" onclick={onCopy} class="btn-primary bg-legal-800 hover:bg-legal-700 border border-legal-600 text-slate-200 flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors">
             <span class="sm:hidden">{copied ? 'Kopiert' : 'Kopieren'}</span>
             <span class="hidden sm:inline">{copied ? 'Kopiert!' : 'In Zwischenablage kopieren'}</span>
@@ -51,7 +59,7 @@
 
   <div class="hidden sm:grid bg-legal-900/50 pl-10 pr-[5.5rem] py-3 border-b border-legal-700 grid-cols-12 text-[10px] font-bold text-legal-500 uppercase tracking-widest shrink-0">
     <div class="col-span-8">Beschreibung</div>
-    <div class="col-span-4 text-right">Betrag (CHF)</div>
+    <div class="col-span-4 text-right">Betrag</div>
   </div>
 
   <div class="flex-1 overflow-y-auto custom-scrollbar p-3 sm:p-6 bg-legal-900/30">
@@ -111,23 +119,13 @@
             </div>
 
             <div class="sm:col-span-4 flex sm:flex-col justify-between sm:justify-start items-end border-t border-white/5 sm:border-0 pt-2 sm:pt-0">
-              {#if pos.details.config.isExpense}
-                <span class="text-xs text-blue-400/70 sm:hidden">Barauslage</span>
-                <div class="text-right">
+              <div class="text-right">
+                {#if pos.details.config.isExpense}
                   <span class="font-mono text-sm font-semibold text-blue-300 tabular-nums">{formatCurrency(pos.details.grossTotal)}</span>
-                </div>
-              {:else}
-                <div class="text-xs text-slate-500 sm:hidden flex flex-col gap-0.5">
-                  <span>Honorar</span>
-                  {#if pos.details.courtFee > 0}<span>+ GGG</span>{/if}
-                </div>
-                <div class="text-right">
+                {:else}
                   <span class="font-mono text-sm font-semibold text-slate-200 tabular-nums">{formatCurrency(pos.details.netTotal)}</span>
-                  {#if pos.details.courtFee > 0}
-                    <span class="font-mono text-[10px] text-blue-400 tabular-nums block mt-0.5 sm:mt-1 text-right">+ {formatCurrency(pos.details.courtFee)}</span>
-                  {/if}
-                </div>
-              {/if}
+                {/if}
+              </div>
             </div>
           </div>
 
@@ -152,18 +150,18 @@
                   <span>Basis ({pos.type})</span>
                   <span class="text-right font-mono">{formatCurrency(pos.details.baseFee)}</span>
                   
-                  {#if pos.details.unitRateAmount > 0}
-                    <span>Einheitssatz ({pos.details.config.ehsLabel})</span>
-                    <span class="text-right font-mono">{formatCurrency(pos.details.unitRateAmount)}</span>
-                  {/if}
-                  
                   {#if pos.details.surchargeAmount > 0}
                     <span>Genossenzuschlag ({(pos.details.config.surchargePercent * 100).toFixed(0)}% für {pos.details.config.streitgenossenCount} Streitgenossen)</span>
                     <span class="text-right font-mono">{formatCurrency(pos.details.surchargeAmount)}</span>
                   {/if}
+
+                  {#if pos.details.courtFee > 0}
+                    <span class="font-medium text-legal-gold">GGG ({pos.details.config.courtFeeLabel})</span>
+                    <span class="text-right font-mono font-medium text-legal-gold">{formatCurrency(pos.details.courtFee)}</span>
+                  {/if}
                   
                   <div class="col-span-2 border-t border-legal-700/30 my-1"></div>
-                  <span class="font-medium text-legal-gold">Netto Honorar</span>
+                  <span class="font-medium text-legal-gold">Netto</span>
                   <span class="text-right font-mono font-medium text-legal-gold">{formatCurrency(pos.details.netTotal)}</span>
                 </div>
               {/if}
@@ -176,18 +174,30 @@
 
   <div class="bg-legal-900 p-4 sm:p-6 border-t border-legal-700 shrink-0 shadow-[0_-5px_15px_rgba(0,0,0,0.3)] z-20">
     <div class="grid grid-cols-2 gap-x-4 sm:gap-x-8 gap-y-2 max-w-sm ml-auto sm:pr-16">
-      <div class="text-sm text-slate-400 text-right">Netto Honorar</div>
-      <div class="text-sm font-mono text-slate-200 text-right tabular-nums font-medium">{formatCurrency(totals.net)}</div>
+      <div class="text-sm text-slate-400 text-right">Netto</div>
+      <div class="text-sm font-mono text-slate-200 text-right tabular-nums font-medium">{formatCurrency(totals.netPositions)}</div>
       
-      <div class="text-sm text-slate-400 text-right">USt (8.1%)</div>
+      {#if totals.ehsActive && totals.ehs > 0}
+        <div class="text-sm text-legal-gold text-right">Einheitssatz ({totals.ehsPercent}%)</div>
+        <div class="text-sm font-mono text-legal-gold text-right tabular-nums">{formatCurrency(totals.ehs)}</div>
+      {/if}
+
+      <div class="text-sm text-slate-400 text-right">MWST (8.1%)</div>
       <div class="text-sm font-mono text-slate-200 text-right tabular-nums">{formatCurrency(totals.vat)}</div>
       
-      <div class="text-sm text-blue-300 text-right">Barauslagen</div>
-      <div class="text-sm font-mono text-blue-300 text-right tabular-nums">{formatCurrency(totals.expenses)}</div>
+      {#if totals.barauslagen > 0}
+        <div class="text-sm text-blue-300 text-right">Barauslagen</div>
+        <div class="text-sm font-mono text-blue-300 text-right tabular-nums">{formatCurrency(totals.barauslagen)}</div>
+      {/if}
+
+      {#if totals.ggg > 0}
+        <div class="text-sm text-blue-300 text-right">Gerichtsgebühren (GGG)</div>
+        <div class="text-sm font-mono text-blue-300 text-right tabular-nums">{formatCurrency(totals.ggg)}</div>
+      {/if}
       
       <div class="col-span-2 my-2 border-t border-legal-700"></div>
       
-      <div class="text-base font-bold text-legal-gold text-right uppercase tracking-wider">Total</div>
+      <div class="text-base font-bold text-legal-gold text-right uppercase tracking-wider">GESAMT</div>
       <div class="text-xl font-bold font-mono text-white text-right tabular-nums">{formatCurrency(totals.gross)}</div>
     </div>
   </div>
