@@ -1,5 +1,5 @@
 <script lang="ts">
-  import logoSrc from '../assets/logo.svg';
+  import logoSrc from '../assets/logo2.svg';
 
   // Props
   let { onUnlock } = $props<{ onUnlock: () => void }>();
