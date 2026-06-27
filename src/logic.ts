@@ -7,11 +7,27 @@ import { TABLE_TP5, TP5_STEP_INCREMENT, TP5_CAP } from './tarife/tp5';
 import { TABLE_TP8, TP8_STEP_INCREMENT, TP8_CAP } from './tarife/tp8';
 import { TABLE_GGG, type GGG_COLUMN } from './tarife/ggg';
 
-import { ACTION_ITEMS, TP_LABELS, type TarifPosten, type ActionItem } from './fees';
+// Wir lösen die Abhängigkeit von fees.ts auf und definieren die Typen hier vollständig gemäss RATV
+export type TarifPosten = 'TP1' | 'TP2' | 'TP3A' | 'TP3B' | 'TP3C' | 'TP5' | 'TP6' | 'TP7' | 'TP8' | 'TP9';
+export type ExtendedTarifPosten = TarifPosten | 'BARAUSLAGE' | 'GGG' | 'TP3A_Session' | 'TP3B_Session' | 'TP3C_Session';
 
-export { ACTION_ITEMS, TP_LABELS, type TarifPosten, type ActionItem };
-
-export type ExtendedTarifPosten = TarifPosten | 'BARAUSLAGE' | 'GGG' | 'TP3A_Session';
+export const TP_LABELS: Record<string, string> = {
+  'TP1': 'TP 1 (Kurze Mitteilung)',
+  'TP2': 'TP 2 (Mahnklage / Exekution)',
+  'TP3A': 'TP 3A (Klage / Schriftsatz)',
+  'TP3B': 'TP 3B (Berufung / Rekurs)',
+  'TP3C': 'TP 3C (Revision)',
+  'TP5': 'TP 5 (Einfaches Schreiben)',
+  'TP6': 'TP 6 (Ausführlicher Brief)',
+  'TP7': 'TP 7 (Ausserhalb Kanzlei)',
+  'TP8': 'TP 8 (Besprechung)',
+  'TP9': 'TP 9 (Reisezeit)',
+  'TP3A_Session': 'TP 3A (Verhandlung)',
+  'TP3B_Session': 'TP 3B (Verhandlung 2. Instanz)',
+  'TP3C_Session': 'TP 3C (Verhandlung OGH)',
+  'BARAUSLAGE': 'Barauslage',
+  'GGG': 'Gerichtsgebühr (GGG)'
+};
 
 export interface ExtendedActionItem {
   id: ExtendedTarifPosten;
@@ -38,17 +54,24 @@ export interface Position {
 
 export interface CalculationResult {
   baseFee: number;
+  unitRateAmount: number;
   surchargeAmount: number;
+  surchargeOnBase: number;
+  surchargeOnEHS: number;
+  positionNet: number; 
+  totalEHS: number;    
   courtFee: number; 
-  netTotal: number;
+  netTotal: number;    
   vatAmount: number;
   grossTotal: number;
   config: {
+    hasUnitRate: boolean;
     streitgenossenCount: number; 
     surchargePercent: number;    
     isForeign: boolean;
     isTimeBased: boolean;
     isExpense: boolean; 
+    ehsLabel: string;
     courtFeeLabel?: string;
     hasInfoSurcharge: boolean; 
     isShortMeeting: boolean;   
@@ -61,25 +84,70 @@ export interface ServiceGroup {
   items: ExtendedActionItem[];
 }
 
+// Das komplette, an den RATV angelehnte Menü, sauber gruppiert und sortiert
 export const SERVICE_GROUPS: ServiceGroup[] = [
   {
-    id: 'TP1', label: 'TP 1: Einfache Mitteilungen', 
-    items: ACTION_ITEMS.filter(i => i.id === 'TP1') as ExtendedActionItem[]
+    id: 'TP1',
+    label: 'TP 1: Kurze Schriftsätze & Mitteilungen',
+    items: [
+      { id: 'TP1', label: 'Kurze Mitteilung / Anzeige', description: 'Fristen, Tagsatzungen, Zustellungen, Akteneinsicht', keywords: ['frist', 'anzeige', 'akteneinsicht'] },
+      { id: 'TP1', label: 'Kostenantrag / Vollmacht', description: 'Anträge auf Kostenbestimmung, Vollmachten', keywords: ['kosten', 'vollmacht'] }
+    ]
   },
   {
-    id: 'TP2', label: 'TP 2: Mahnklage / Exekution', 
-    items: ACTION_ITEMS.filter(i => i.id === 'TP2') as ExtendedActionItem[]
+    id: 'TP2',
+    label: 'TP 2: Mahnklagen, Exekution & Kurze Tagsatzungen',
+    items: [
+      { id: 'TP2', label: 'Mahnklage / Rechtsöffnungsantrag', description: 'Zahlbefehl, Saldoklagen', keywords: ['mahnklage', 'rechtsöffnung', 'zahlbefehl'] },
+      { id: 'TP2', label: 'Exekutionsantrag', description: 'Alle regulären Exekutionsanträge', keywords: ['exekution', 'pfändung'] },
+      { id: 'TP2', label: 'Kurze Tagsatzung', description: 'Erste Tagsatzung, Versäumnisurteil, Vergleich', keywords: ['tagsatzung', 'vergleich', 'versäumnis'] }
+    ]
   },
   {
-    id: 'TP3', label: 'TP 3: Zivilprozess & Rechtsmittel', 
-    items: ACTION_ITEMS.filter(i => i.id.startsWith('TP3')) as ExtendedActionItem[]
+    id: 'TP3A',
+    label: 'TP 3A: Zivilprozess (Klage & Beweisaufnahme)',
+    items: [
+      { id: 'TP3A', label: 'Klage / Klagebeantwortung', description: 'Ausführliche Klagen, Vorbereitende Schriftsätze', keywords: ['klage', 'beantwortung', 'schriftsatz'] },
+      { id: 'TP3A', label: 'Einstweilige Verfügung', description: 'Antrag auf Sicherung', keywords: ['einstweilige', 'verfügung', 'sicherung'] },
+      { id: 'TP3A_Session', label: 'Tagsatzung mit Beweisaufnahme', description: 'Ausführliche Verhandlung (Abrechnung nach Stunden)', keywords: ['tagsatzung', 'beweis', 'verhandlung'] }
+    ]
   },
   {
-    id: 'TP5_8', label: 'TP 5-8: Nebenleistungen & Besprechungen', 
-    items: ACTION_ITEMS.filter(i => ['TP5','TP6','TP7','TP8','TP9'].includes(i.id)) as ExtendedActionItem[]
+    id: 'TP3B',
+    label: 'TP 3B: Rechtsmittel (Berufung / Rekurs)',
+    items: [
+      { id: 'TP3B', label: 'Berufung / Beschwerde / Rekurs', description: 'Rechtsmittel zweiter Instanz', keywords: ['berufung', 'beschwerde', 'rekurs'] },
+      { id: 'TP3B_Session', label: 'Verhandlung 2. Instanz', description: 'Mündliche Berufungsverhandlung (Abrechnung nach Stunden)', keywords: ['verhandlung', 'berufung'] }
+    ]
   },
   {
-    id: 'EXP', label: 'Barauslagen & Gebühren', 
+    id: 'TP3C',
+    label: 'TP 3C: Revision / Oberster Gerichtshof',
+    items: [
+      { id: 'TP3C', label: 'Revision / Revisionsbeantwortung', description: 'Rechtsmittel an den OGH', keywords: ['revision', 'ogh'] },
+      { id: 'TP3C_Session', label: 'Verhandlung OGH', description: 'Mündliche Revisionsverhandlung (Abrechnung nach Stunden)', keywords: ['verhandlung', 'revision', 'ogh'] }
+    ]
+  },
+  {
+    id: 'TP5_6',
+    label: 'TP 5 & 6: Briefe & Schreiben',
+    items: [
+      { id: 'TP5', label: 'Einfaches Schreiben (TP 5)', description: 'Mahnschreiben, kurze Berichte, Einladungen', keywords: ['brief', 'schreiben', 'mahnung'] },
+      { id: 'TP6', label: 'Ausführlicher Brief (TP 6)', description: 'Briefe anderer Art, ohne Rechtsgutachten', keywords: ['brief', 'ausführlich'] }
+    ]
+  },
+  {
+    id: 'TP7_9',
+    label: 'TP 7, 8 & 9: Besprechungen & Abwesenheiten',
+    items: [
+      { id: 'TP8', label: 'Besprechung / Telefonat (TP 8)', description: 'Besprechungen (pro angefangene halbe Stunde)', keywords: ['besprechung', 'telefon', 'konferenz'] },
+      { id: 'TP7', label: 'Geschäfte ausserhalb Kanzlei (TP 7)', description: 'Behördengänge, Aktenstudium extern (pro halbe Stunde)', keywords: ['ausserhalb', 'behörde', 'aktenstudium'] },
+      { id: 'TP9', label: 'Reisezeit / Zeitversäumnis (TP 9)', description: 'Wegzeit (pro Stunde)', keywords: ['reise', 'weg', 'zeit'] }
+    ]
+  },
+  {
+    id: 'EXP',
+    label: 'Barauslagen & Gebühren',
     items: [
       { id: 'BARAUSLAGE', label: 'Barauslage', description: 'Manuelle Spesen und Barauslagen', keywords: ['spesen', 'auslage', 'porto'] },
       { id: 'GGG', label: 'Gerichtsgebühr (GGG)', description: 'Staatliche Gerichtsgebühren', keywords: ['ggg', 'gericht', 'gebühr'], gggColumn: 'zivil' }
@@ -93,6 +161,7 @@ export function calculateFees(
   gggColumn: GGG_COLUMN | undefined,
   isAppeal: boolean, 
   multiplier: number = 1,
+  hasUnitRate: boolean,
   streitgenossenCount: number, 
   isForeign: boolean,
   includeCourtFee: boolean,
@@ -104,32 +173,62 @@ export function calculateFees(
   const isExpense = type === 'BARAUSLAGE' || type === 'GGG';
 
   // --- Anwaltshonorar ---
-  let singleUnitFee = 0;
+  let totalBase = 0;
   
   if (!isExpense) {
-    singleUnitFee = getBaseFee(safeValue, type as TarifPosten);
+    let singleUnitFee = 0;
+    
+    // Verhandlungen nach Stunden: Erste Stunde voll, jede weitere hälftig (RATV Art 1)
+    if (type === 'TP3A_Session' || type === 'TP3B_Session' || type === 'TP3C_Session') {
+      const baseType = type.replace('_Session', '') as TarifPosten;
+      singleUnitFee = getBaseFee(safeValue, baseType);
+      
+      const firstHour = singleUnitFee;
+      const subsequentHours = Math.max(0, multiplier - 1) * (singleUnitFee * 0.5);
+      totalBase = firstHour + subsequentHours;
+      
+    } else {
+      singleUnitFee = getBaseFee(safeValue, type as TarifPosten);
+      
+      if (type === 'TP8' && isShortMeeting) {
+        singleUnitFee = Math.min(singleUnitFee * 0.4, 240);
+      }
+      
+      totalBase = singleUnitFee * multiplier;
+    }
+    
+    // Informationszuschlag 
+    if ((type === 'TP5' || type === 'TP6') && hasInfoSurcharge) {
+      totalBase += (totalBase * 0.5);
+    }
+    
   } else if (type === 'BARAUSLAGE') {
-    singleUnitFee = safeValue; 
+    totalBase = safeValue; 
   }
 
-  if (type === 'TP8' && isShortMeeting) {
-    singleUnitFee = Math.min(singleUnitFee * 0.4, 240);
-  }
-
-  let totalBase = singleUnitFee * multiplier;
-
-  if ((type === 'TP5' || type === 'TP6') && hasInfoSurcharge) {
-    totalBase += (totalBase * 0.5);
+  // --- Einheitssatz (EHS) ---
+  let unitRateAmount = 0;
+  let ehsPercentage = safeValue <= 15000 ? 0.50 : 0.40;
+  
+  if (hasUnitRate && !isExpense) {
+    unitRateAmount = totalBase * ehsPercentage;
   }
 
   // --- Genossenzuschlag (Art. 15 RATG) ---
-  let surchargeAmount = 0;
   let surchargePercent = 0;
+  let surchargeOnBase = 0;
+  let surchargeOnEHS = 0;
   
   if (streitgenossenCount > 0 && !isExpense) {
     surchargePercent = Math.min(0.50, 0.10 + (streitgenossenCount - 1) * 0.05);
-    surchargeAmount = totalBase * surchargePercent;
+    surchargeOnBase = totalBase * surchargePercent;
+    surchargeOnEHS = unitRateAmount * surchargePercent;
   }
+
+  const surchargeAmount = surchargeOnBase + surchargeOnEHS;
+
+  const positionNet = totalBase + surchargeOnBase;
+  const totalEHS = unitRateAmount + surchargeOnEHS;
 
   // --- Gerichtsgebühren (GGG) ---
   let courtFee = 0;
@@ -163,7 +262,7 @@ export function calculateFees(
   }
 
   // --- Summen ---
-  const netTotal = totalBase + surchargeAmount;
+  const netTotal = positionNet + totalEHS; 
   
   let vatAmount = 0;
   if (!isForeign && !isExpense) {
@@ -174,17 +273,24 @@ export function calculateFees(
 
   return {
     baseFee: totalBase,
+    unitRateAmount,
     surchargeAmount,
+    surchargeOnBase,
+    surchargeOnEHS,
+    positionNet,
+    totalEHS,
     courtFee,
     netTotal,
     vatAmount,
     grossTotal,
     config: {
+      hasUnitRate, 
       streitgenossenCount, 
       surchargePercent, 
       isForeign, 
-      isTimeBased: ['TP7', 'TP8', 'TP9', 'TP3A_Session'].includes(type as string),
+      isTimeBased: ['TP7', 'TP8', 'TP9', 'TP3A_Session', 'TP3B_Session', 'TP3C_Session'].includes(type as string),
       isExpense,
+      ehsLabel: (ehsPercentage * 100).toFixed(0) + '%',
       courtFeeLabel,
       hasInfoSurcharge,
       isShortMeeting

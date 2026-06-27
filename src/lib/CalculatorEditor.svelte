@@ -18,6 +18,7 @@
   let editGggColumn = $state<GGG_COLUMN | undefined>('zivil');
   let editIsAppeal = $state(false);
   let editMultiplier = $state(1);
+  let editUnitRate = $state(true);
   let editSurchargeEnabled = $state(false);
   let editSurchargeCount = $state(1); 
   let editHasInfoSurcharge = $state(false); 
@@ -42,6 +43,7 @@
         editGggColumn = positionToEdit.gggColumn;
         editIsAppeal = !!positionToEdit.isAppeal;
         editMultiplier = positionToEdit.multiplier;
+        editUnitRate = positionToEdit.details.config.hasUnitRate;
 
         const count = positionToEdit.details.config.streitgenossenCount;
         if (count > 0) {
@@ -101,7 +103,7 @@
     expandedGroups = newSet;
   }
 
-  let isTimeBased = $derived(['TP7', 'TP8', 'TP9', 'TP3A_Session'].includes(editType as string));
+  let isTimeBased = $derived(['TP7', 'TP8', 'TP9', 'TP3A_Session', 'TP3B_Session', 'TP3C_Session'].includes(editType as string));
   let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType as string));
   let isManualExpense = $derived(editType === 'BARAUSLAGE');
   let isAnyExpense = $derived(editType === 'GGG' || editType === 'BARAUSLAGE');
@@ -111,7 +113,7 @@
   let safeStreitgenossenCount = $derived(editSurchargeEnabled ? Math.max(1, editSurchargeCount) : 0);
 
   let previewResult = $derived(calculateFees(
-    safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, safeStreitgenossenCount, !editVat, editIncludeCourtFee, editHasInfoSurcharge, editIsShortMeeting
+    safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, editIncludeCourtFee, editHasInfoSurcharge, editIsShortMeeting
   ));
 
   function selectAction(item: ExtendedActionItem) {
@@ -125,7 +127,10 @@
     editIncludeCourtFee = false;
     
     if (item.id === 'BARAUSLAGE' || item.id === 'GGG') {
+       editUnitRate = false;
        editSurchargeEnabled = false;
+    } else {
+       editUnitRate = true;
     }
     editHasInfoSurcharge = false;
     editIsShortMeeting = false;
@@ -134,7 +139,7 @@
   function savePosition() {
     let finalLabel = editLabel.trim() || TP_LABELS[editType as string] || editType;
     const details = calculateFees(
-        safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, safeStreitgenossenCount, !editVat, false, editHasInfoSurcharge, editIsShortMeeting
+        safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, false, editHasInfoSurcharge, editIsShortMeeting
     );
 
     const posData: Position = {
@@ -162,6 +167,7 @@
     showDropdown = false;
     editIncludeCourtFee = false;
     editVat = true; 
+    editUnitRate = true;
     editSurchargeEnabled = false;
     editSurchargeCount = 1;
     editHasInfoSurcharge = false;
@@ -279,7 +285,7 @@
       {#if isTimeBased || isQuantityBased || isManualExpense}
         <div transition:slide={{ axis: 'x' }}>
           <label class="label-text text-slate-300" for="mult">
-            {#if editType === 'TP3A_Session'}Std.
+            {#if editType === 'TP3A_Session' || editType === 'TP3B_Session' || editType === 'TP3C_Session'}Std.
             {:else if isManualExpense}Anz.
             {:else if isTimeBased}Einh.
             {:else}Anz.{/if}
@@ -291,6 +297,18 @@
 
     {#if !isAnyExpense}
     <div class="bg-legal-950/50 rounded border border-legal-700/50 p-4 space-y-4" transition:slide>
+      
+      <div class="flex items-center justify-between group">
+        <label for="chk-unitrate" class="flex items-center gap-3 cursor-pointer">
+          <input id="chk-unitrate" type="checkbox" bind:checked={editUnitRate} class="checkbox-legal">
+          <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Einheitssatz</span>
+        </label>
+        {#if editUnitRate}
+          <span transition:fade class="text-xs font-mono text-legal-gold bg-legal-gold/10 px-2 py-0.5 rounded border border-legal-gold/20 tabular-nums">
+            {previewResult.config.ehsLabel} <span class="opacity-40 mx-1">|</span> {formatCurrency(previewResult.totalEHS)}
+          </span>
+        {/if}
+      </div>
 
       {#if editType === 'TP5' || editType === 'TP6'}
         <div class="flex items-center justify-between group" transition:slide>
@@ -386,7 +404,6 @@
       <div class="flex justify-between items-center mb-4">
         <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Positions-Total</span>
         <span class="text-xl font-mono font-bold text-white tabular-nums tracking-tight">
-          <!-- Zeige Total plus temporär generierte Surcharges (wie Info-Zuschlag) an -->
           {#if editType !== 'BARAUSLAGE' && editType !== 'GGG'}
             {formatCurrency(previewResult.netTotal)}
           {:else}
