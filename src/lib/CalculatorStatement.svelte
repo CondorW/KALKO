@@ -2,10 +2,10 @@
   import { formatCurrency, type Position } from '../logic';
   import { slide } from 'svelte/transition';
 
-  let { positions, editId, totals, copied, onEdit, onRemove, onReset, onCopy, onDownload, onToggleEHS } = $props<{
+  let { positions, editId, totals, copied, onEdit, onRemove, onReset, onCopy, onDownload, onToggleEHS, onToggleVat } = $props<{
     positions: Position[];
     editId: string | null;
-    totals: { netPositions: number; ehs: number; ehsPercent: number; ehsActive: boolean; vat: number; barauslagen: number; ggg: number; gross: number };
+    totals: { netPositions: number; ehs: number; ehsPercent: number; ehsActive: boolean; vat: number; vatActive: boolean; barauslagen: number; ggg: number; gross: number };
     copied: boolean;
     onEdit: (pos: Position) => void;
     onRemove: (id: string) => void;
@@ -13,6 +13,7 @@
     onCopy: () => void;
     onDownload: () => void;
     onToggleEHS: () => void;
+    onToggleVat: () => void;
   }>();
 
   let expandedId = $state<string | null>(null);
@@ -33,10 +34,15 @@
       </div>
       
       {#if positions.length > 0}
-        <div class="flex gap-2 w-full sm:w-auto">
+        <div class="flex flex-wrap gap-2 w-full sm:w-auto justify-start sm:justify-end">
           <button aria-label="Einheitssatz umschalten" onclick={onToggleEHS} class="btn-secondary border bg-legal-800 text-slate-300 hover:bg-legal-700 hover:text-white flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors shadow-sm {totals.ehsActive ? 'border-legal-gold ring-1 ring-legal-gold/50 text-legal-gold' : 'border-legal-600'}">
             <span class="sm:hidden">EHS</span>
             <span class="hidden sm:inline">Einheitssatz {totals.ehsActive ? 'AN' : 'AUS'}</span>
+          </button>
+
+          <button aria-label="MWST umschalten" onclick={onToggleVat} class="btn-secondary border bg-legal-800 text-slate-300 hover:bg-legal-700 hover:text-white flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors shadow-sm {totals.vatActive ? 'border-legal-gold ring-1 ring-legal-gold/50 text-legal-gold' : 'border-legal-600'}">
+            <span class="sm:hidden">MWST</span>
+            <span class="hidden sm:inline">MWST {totals.vatActive ? 'AN' : 'AUS'}</span>
           </button>
 
           <button aria-label="Gesamte Liste zurücksetzen" onclick={onReset} class="btn-secondary text-red-400 hover:text-red-300 hover:border-red-900/50 hover:bg-red-900/10 flex-1 sm:flex-none justify-center text-xs sm:text-sm px-3 py-1.5 rounded transition-colors">
@@ -123,7 +129,7 @@
                 {#if pos.details.config.isExpense}
                   <span class="font-mono text-sm font-semibold text-blue-300 tabular-nums">{formatCurrency(pos.details.grossTotal)}</span>
                 {:else}
-                  <span class="font-mono text-sm font-semibold text-slate-200 tabular-nums">{formatCurrency(pos.details.netTotal)}</span>
+                  <span class="font-mono text-sm font-semibold text-slate-200 tabular-nums">{formatCurrency(pos.details.positionNet)}</span>
                 {/if}
               </div>
             </div>
@@ -150,9 +156,9 @@
                   <span>Basis ({pos.type})</span>
                   <span class="text-right font-mono">{formatCurrency(pos.details.baseFee)}</span>
                   
-                  {#if pos.details.surchargeAmount > 0}
+                  {#if pos.details.surchargeOnBase > 0}
                     <span>Genossenzuschlag ({(pos.details.config.surchargePercent * 100).toFixed(0)}% für {pos.details.config.streitgenossenCount} Streitgenossen)</span>
-                    <span class="text-right font-mono">{formatCurrency(pos.details.surchargeAmount)}</span>
+                    <span class="text-right font-mono">{formatCurrency(pos.details.surchargeOnBase)}</span>
                   {/if}
 
                   {#if pos.details.courtFee > 0}
@@ -162,7 +168,7 @@
                   
                   <div class="col-span-2 border-t border-legal-700/30 my-1"></div>
                   <span class="font-medium text-legal-gold">Netto</span>
-                  <span class="text-right font-mono font-medium text-legal-gold">{formatCurrency(pos.details.netTotal)}</span>
+                  <span class="text-right font-mono font-medium text-legal-gold">{formatCurrency(pos.details.positionNet)}</span>
                 </div>
               {/if}
             </div>
@@ -182,8 +188,10 @@
         <div class="text-sm font-mono text-legal-gold text-right tabular-nums">{formatCurrency(totals.ehs)}</div>
       {/if}
 
-      <div class="text-sm text-slate-400 text-right">MWST (8.1%)</div>
-      <div class="text-sm font-mono text-slate-200 text-right tabular-nums">{formatCurrency(totals.vat)}</div>
+      {#if totals.vatActive}
+        <div class="text-sm text-slate-400 text-right">MWST (8.1%)</div>
+        <div class="text-sm font-mono text-slate-200 text-right tabular-nums">{formatCurrency(totals.vat)}</div>
+      {/if}
       
       {#if totals.barauslagen > 0}
         <div class="text-sm text-blue-300 text-right">Barauslagen</div>

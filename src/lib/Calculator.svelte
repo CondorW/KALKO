@@ -7,8 +7,8 @@
   let positionToEdit = $state<Position | null>(null);
   let copied = $state(false);
   
-  // Globaler Einheitssatz State
   let globalEHSActive = $state(true);
+  let globalVatActive = $state(true);
 
   let sortedPositions = $derived([...positions].sort((a, b) => {
     const dateA = new Date(a.date).getTime();
@@ -19,9 +19,7 @@
 
   let totals = $derived.by(() => {
       let maxStreitwert = 0;
-      let ehsBasis = 0;
       let netPositions = 0;
-      let vatFromPositions = 0;
       let barauslagen = 0;
       let ggg = 0;
 
@@ -31,24 +29,26 @@
               if (p.type === 'BARAUSLAGE') barauslagen += p.details.grossTotal;
               if (p.type === 'GGG') ggg += p.details.grossTotal;
           } else {
-              netPositions += p.details.netTotal;
-              vatFromPositions += p.details.vatAmount;
+              netPositions += p.details.positionNet;
               ggg += p.details.courtFee;
-              
-              // EHS berechtigt (Art. 23 RATG): TP1, 2, 3, 4, 7
-              if (['TP1', 'TP2', 'TP3A', 'TP3B', 'TP3C', 'TP3A_Session', 'TP7'].includes(p.type as string)) {
-                  ehsBasis += p.details.netTotal;
-              }
           }
       }
 
       let ehsPercent = maxStreitwert > 15000 ? 0.4 : 0.5;
-      let ehs = globalEHSActive ? (ehsBasis * ehsPercent) : 0;
+      let ehs = 0;
       
-      let hasVat = positions.some(p => p.details.vatAmount > 0);
-      let ehsVat = (globalEHSActive && hasVat) ? ehs * 0.081 : 0;
+      if (globalEHSActive) {
+          for (const p of positions) {
+              if (['TP1', 'TP2', 'TP3A', 'TP3B', 'TP3C', 'TP4_U', 'TP4_V', 'TP2_Session', 'TP3A_Session', 'TP3B_Session', 'TP3C_Session', 'TP4_Session_U', 'TP4_Session_V', 'TP7'].includes(p.type as string)) {
+                  let multiplier = p.details.config.isDoubleEHS ? 2 : 1;
+                  ehs += p.details.positionNet * ehsPercent * multiplier;
+              }
+          }
+      }
+      
+      let vatBase = netPositions + ehs;
+      let vat = globalVatActive ? (vatBase * 0.081) : 0;
 
-      let vat = vatFromPositions + ehsVat;
       let gross = netPositions + ehs + vat + barauslagen + ggg;
 
       return {
@@ -57,6 +57,7 @@
           ehsPercent: ehsPercent * 100,
           ehsActive: globalEHSActive,
           vat,
+          vatActive: globalVatActive,
           barauslagen,
           ggg,
           gross
@@ -64,11 +65,11 @@
   });
 
   function handleSave(pos: Position) {
+    // FIX: Svelte 5 Reaktivität garantiert durch Immutable Array-Neuzuweisung
     if (positionToEdit) {
-      const idx = positions.findIndex(p => p.id === pos.id);
-      if (idx !== -1) positions[idx] = pos;
+      positions = positions.map(p => p.id === pos.id ? pos : p);
     } else {
-      positions.push(pos);
+      positions = [...positions, pos];
     }
     positionToEdit = null;
   }
@@ -95,6 +96,10 @@
     globalEHSActive = !globalEHSActive;
   }
 
+  function handleToggleVat() {
+    globalVatActive = !globalVatActive;
+  }
+
   function getInvoiceText(): string {
     const padNum = (val: number) => val.toLocaleString('de-LI', { minimumFractionDigits: 2 }).padStart(12, ' ');
     let text = `KOSTENNOTE\n--------------------------------\n`;
@@ -106,7 +111,7 @@
         const d = new Date(p.date);
         const dateStr = d.toLocaleDateString('de-CH');
         
-        let amount = p.type === 'BARAUSLAGE' ? p.details.grossTotal : p.details.netTotal;
+        let amount = p.type === 'BARAUSLAGE' ? p.details.grossTotal : p.details.positionNet;
         text += `${displayIndex}. [${dateStr}] ${p.label}\n`;
         text += `   Betrag ....................... ${padNum(amount)}\n`;
         
@@ -120,7 +125,9 @@
         text += `Einheitssatz (${totals.ehsPercent}%) ........... ${padNum(totals.ehs)}\n`;
     }
 
-    text += `MWST (8.1%) .................. ${padNum(totals.vat)}\n`;
+    if (totals.vatActive) {
+        text += `MWST (8.1%) .................. ${padNum(totals.vat)}\n`;
+    }
     
     if (totals.barauslagen > 0) {
         text += `Barauslagen .................. ${padNum(totals.barauslagen)}\n`;
@@ -150,7 +157,7 @@
         const d = new Date(p.date);
         const dateStr = d.toLocaleDateString('de-CH');
         
-        let amount = p.type === 'BARAUSLAGE' ? p.details.grossTotal : p.details.netTotal;
+        let amount = p.type === 'BARAUSLAGE' ? p.details.grossTotal : p.details.positionNet;
 
         html += `<tr>`;
         html += `<td style="padding: 4px; vertical-align: top;">${displayIndex}.</td>`;
@@ -170,7 +177,9 @@
         html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">Einheitssatz (${totals.ehsPercent}%)</td><td style="text-align: right; padding: 4px;">${formatNum(totals.ehs)}</td></tr>`;
     }
 
-    html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">MWST (8.1%)</td><td style="text-align: right; padding: 4px;">${formatNum(totals.vat)}</td></tr>`;
+    if (totals.vatActive) {
+        html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">MWST (8.1%)</td><td style="text-align: right; padding: 4px;">${formatNum(totals.vat)}</td></tr>`;
+    }
     
     if (totals.barauslagen > 0) {
         html += `<tr><td colspan="3" style="text-align: right; padding: 4px;">Barauslagen</td><td style="text-align: right; padding: 4px;">${formatNum(totals.barauslagen)}</td></tr>`;
@@ -245,6 +254,7 @@
       onCopy={handleCopy} 
       onDownload={handleDownload}
       onToggleEHS={handleToggleEHS}
+      onToggleVat={handleToggleVat}
     />
   </div>
 </div>

@@ -23,7 +23,7 @@
   let editSurchargeCount = $state(1); 
   let editHasInfoSurcharge = $state(false); 
   let editIsShortMeeting = $state(false);   
-  let editVat = $state(true); 
+  let editIsDoubleEHS = $state(false);
   let editIncludeCourtFee = $state(false);
   let editLabel = $state('');
   let editDesc = $state('');
@@ -56,7 +56,7 @@
 
         editHasInfoSurcharge = positionToEdit.details.config.hasInfoSurcharge || false;
         editIsShortMeeting = positionToEdit.details.config.isShortMeeting || false;
-        editVat = !positionToEdit.details.config.isForeign;
+        editIsDoubleEHS = positionToEdit.details.config.isDoubleEHS || false;
         editIncludeCourtFee = false;
         editLabel = positionToEdit.label;
         editDesc = positionToEdit.description || '';
@@ -103,8 +103,9 @@
     expandedGroups = newSet;
   }
 
-  let isTimeBased = $derived(['TP7', 'TP8', 'TP9', 'TP3A_Session', 'TP3B_Session', 'TP3C_Session'].includes(editType as string));
-  let isQuantityBased = $derived(['TP5', 'TP6'].includes(editType as string));
+  let isSession = $derived(['TP2_Session', 'TP3A_Session', 'TP3B_Session', 'TP3C_Session', 'TP4_Session_U', 'TP4_Session_V'].includes(editType as string));
+  let isTimeBased = $derived(['TP7', 'TP8', 'TP9'].includes(editType as string) || isSession);
+  let isQuantityBased = $derived(['TP5', 'TP6', 'TP4_U', 'TP4_V'].includes(editType as string));
   let isManualExpense = $derived(editType === 'BARAUSLAGE');
   let isAnyExpense = $derived(editType === 'GGG' || editType === 'BARAUSLAGE');
 
@@ -112,8 +113,9 @@
   let safeMultiplier = $derived(Math.max(0, editMultiplier));
   let safeStreitgenossenCount = $derived(editSurchargeEnabled ? Math.max(1, editSurchargeCount) : 0);
 
+  // FIX: Parameteranzahl korrigiert (Vat/isForeign wurde komplett entfernt)
   let previewResult = $derived(calculateFees(
-    safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, editIncludeCourtFee, editHasInfoSurcharge, editIsShortMeeting
+    safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, editIncludeCourtFee, editHasInfoSurcharge, editIsShortMeeting, editIsDoubleEHS
   ));
 
   function selectAction(item: ExtendedActionItem) {
@@ -132,14 +134,18 @@
     } else {
        editUnitRate = true;
     }
+    
     editHasInfoSurcharge = false;
     editIsShortMeeting = false;
+    editIsDoubleEHS = false;
   }
 
   function savePosition() {
     let finalLabel = editLabel.trim() || TP_LABELS[editType as string] || editType;
+    
+    // FIX: Parameteranzahl korrigiert. CourtFeePreview ist hier standardmässig false
     const details = calculateFees(
-        safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, !editVat, false, editHasInfoSurcharge, editIsShortMeeting
+        safeValue, editType, editGggColumn, editIsAppeal, safeMultiplier, editUnitRate, safeStreitgenossenCount, false, editHasInfoSurcharge, editIsShortMeeting, editIsDoubleEHS
     );
 
     const posData: Position = {
@@ -156,6 +162,7 @@
     };
 
     onSave(posData);
+    resetEditorLocal();
   }
 
   function resetEditorLocal() {
@@ -166,12 +173,12 @@
     searchQuery = '';
     showDropdown = false;
     editIncludeCourtFee = false;
-    editVat = true; 
     editUnitRate = true;
     editSurchargeEnabled = false;
     editSurchargeCount = 1;
     editHasInfoSurcharge = false;
     editIsShortMeeting = false;
+    editIsDoubleEHS = false;
     if (isTimeBased || isQuantityBased) editMultiplier = 1;
   }
 
@@ -220,7 +227,7 @@
         />
         {#if showDropdown}
           <button aria-label="Suche leeren" class="absolute right-2 top-2.5 text-legal-500 hover:text-white p-0.5 rounded-full hover:bg-legal-700 transition-colors" onclick={() => { showDropdown = false; searchQuery = ''; }}>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4"><path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" /></svg>
           </button>
         {/if}
       </div>
@@ -285,7 +292,8 @@
       {#if isTimeBased || isQuantityBased || isManualExpense}
         <div transition:slide={{ axis: 'x' }}>
           <label class="label-text text-slate-300" for="mult">
-            {#if editType === 'TP3A_Session' || editType === 'TP3B_Session' || editType === 'TP3C_Session'}Std.
+            {#if ['TP2_Session', 'TP3A_Session', 'TP3B_Session', 'TP3C_Session', 'TP9'].includes(editType as string)}Std.
+            {:else if ['TP4_Session_U', 'TP4_Session_V', 'TP7', 'TP8'].includes(editType as string)}1/2 Std.
             {:else if isManualExpense}Anz.
             {:else if isTimeBased}Einh.
             {:else}Anz.{/if}
@@ -301,7 +309,7 @@
       <div class="flex items-center justify-between group">
         <label for="chk-unitrate" class="flex items-center gap-3 cursor-pointer">
           <input id="chk-unitrate" type="checkbox" bind:checked={editUnitRate} class="checkbox-legal">
-          <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Einheitssatz</span>
+          <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Einheitssatz anwenden</span>
         </label>
         {#if editUnitRate}
           <span transition:fade class="text-xs font-mono text-legal-gold bg-legal-gold/10 px-2 py-0.5 rounded border border-legal-gold/20 tabular-nums">
@@ -309,6 +317,15 @@
           </span>
         {/if}
       </div>
+
+      {#if isSession}
+        <div class="flex items-center justify-between group" transition:slide>
+          <label for="chk-double-ehs" class="flex items-center gap-3 cursor-pointer">
+            <input id="chk-double-ehs" type="checkbox" bind:checked={editIsDoubleEHS} class="checkbox-legal">
+            <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Doppelter Einheitssatz (Ausland)</span>
+          </label>
+        </div>
+      {/if}
 
       {#if editType === 'TP5' || editType === 'TP6'}
         <div class="flex items-center justify-between group" transition:slide>
@@ -361,16 +378,6 @@
               <input type="number" aria-label="Anzahl weitere Personen" min="1" max="20" bind:value={editSurchargeCount} class="w-10 bg-transparent text-right font-mono text-xs text-white focus:outline-none border-b border-legal-700 focus:border-legal-accent pb-0.5" />
             </div>
           </div>
-        {/if}
-      </div>
-
-      <div class="flex items-center justify-between group">
-        <label for="chk-vat" class="flex items-center gap-3 cursor-pointer">
-          <input id="chk-vat" type="checkbox" bind:checked={editVat} class="checkbox-legal">
-          <span class="text-sm font-medium text-slate-300 group-hover:text-white transition-colors">Mehrwertsteuer</span>
-        </label>
-        {#if editVat}
-          <span transition:fade class="text-xs font-mono text-slate-400 tabular-nums">8.1% | {formatCurrency(previewResult.vatAmount)}</span>
         {/if}
       </div>
     </div>
