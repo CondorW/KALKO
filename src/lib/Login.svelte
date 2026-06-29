@@ -1,6 +1,4 @@
 <script lang="ts">
-  import logoSrc from '../assets/logo2.svg';
-
   // Props
   let { onUnlock } = $props<{ onUnlock: () => void }>();
 
@@ -29,22 +27,14 @@
 </script>
 
 <div class="fixed inset-0 overflow-hidden flex flex-col items-center justify-center bg-legal-950">
-  
   <div class="relative z-20 w-full max-w-md px-4 flex flex-col items-center">
     
-    <div class="mb-12 flex flex-col items-center cursor-default w-full">
-      <div class="mb-6 transition-transform duration-700 ease-out hover:scale-105">
-        <img src={logoSrc} alt="TarifPoint Logo" class="h-16 md:h-20 drop-shadow-[0_4px_15px_rgba(251,191,36,0.2)]" />
-      </div>
-      <p class="text-legal-500 text-xs uppercase tracking-[0.4em] font-medium">Liechtenstein Kosten Rechner</p>
-    </div>
-
     <div class="card max-w-sm w-full bg-legal-900/80 backdrop-blur-md border border-legal-700/50 p-8 shadow-2xl relative overflow-hidden focus-within:border-legal-gold/30 transition-colors">
       <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-legal-gold/30 to-transparent"></div>
       
       <div class="space-y-6 relative z-10">
         <div class="text-center">
-          <label for="pin" class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-3 block">Sicherheits-PIN</label>
+          <label for="pin" class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-3 block">PIN</label>
           <div class="relative group/input">
             <input 
               id="pin"
