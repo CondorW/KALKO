@@ -1,17 +1,16 @@
 <script lang="ts">
-  // Props
+  // Wir definieren Props mit $props()
   let { onUnlock } = $props<{ onUnlock: () => void }>();
-
+  
   let pin = $state('');
   let error = $state('');
-
   const CORRECT_PIN = '5555';
 
   function handleLogin() {
     if (pin === CORRECT_PIN) {
-      onUnlock(); // Sofortiger Unlock ohne Verzögerung
+      onUnlock();
     } else {
-      error = 'ZUGRIFF VERWEIGERT';
+      error = 'Zugriff verweigert. Falscher PIN.';
       pin = '';
     }
   }
@@ -19,50 +18,41 @@
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Enter') handleLogin();
   }
-
-  // Svelte Action: Setzt den Fokus ohne A11y-Linting-Verletzung
-  function focusOnMount(node: HTMLInputElement) {
-    node.focus();
-  }
 </script>
 
-<div class="fixed inset-0 overflow-hidden flex flex-col items-center justify-center bg-legal-950">
-  <div class="relative z-20 w-full max-w-md px-4 flex flex-col items-center">
-    
-    <div class="card max-w-sm w-full bg-legal-900/80 backdrop-blur-md border border-legal-700/50 p-8 shadow-2xl relative overflow-hidden focus-within:border-legal-gold/30 transition-colors">
-      <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-legal-gold/30 to-transparent"></div>
-      
-      <div class="space-y-6 relative z-10">
-        <div class="text-center">
-          <label for="pin" class="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-3 block">PIN</label>
-          <div class="relative group/input">
-            <input 
-              id="pin"
-              type="password" 
-              bind:value={pin} 
-              onkeydown={handleKeydown}
-              use:focusOnMount
-              placeholder="••••" 
-              class="w-full bg-legal-950/60 border border-legal-700 rounded-sm text-center text-3xl tracking-[0.5em] text-white py-4 focus:ring-1 focus:ring-legal-gold focus:border-legal-gold focus:outline-none transition-all placeholder:text-legal-800 font-mono shadow-inner group-hover/input:border-legal-600"
-            />
-          </div>
-        </div>
-
-        {#if error}
-          <div class="text-red-400 text-xs text-center font-mono uppercase tracking-wide border border-red-900/30 bg-red-950/30 py-3 rounded-sm animate-pulse flex items-center justify-center gap-2">
-            <span class="text-lg">⚠️</span> {error}
-          </div>
-        {/if}
-
-        <button aria-label="System entsperren" onclick={handleLogin} class="btn-primary w-full py-4 text-xs uppercase tracking-widest font-bold shadow-[0_0_20px_rgba(59,130,246,0.15)] hover:shadow-[0_0_30px_rgba(59,130,246,0.3)] bg-gradient-to-r from-legal-accent to-blue-600 hover:to-blue-500 border border-white/10 active:scale-95 transition-transform">
-          System entsperren
-        </button>
+<div class="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+  <div class="card max-w-md w-full border-t-4 border-t-legal-gold">
+    <div class="mb-6">
+      <div class="w-16 h-16 bg-legal-700 rounded-full flex items-center justify-center mx-auto mb-4">
+        <span class="text-3xl">⚖️</span>
       </div>
+      <h1 class="text-2xl font-bold text-white">Kanzlei Tarifrechner</h1>
+      <p class="text-slate-400 mt-2 text-sm">Bitte authentifizieren Sie sich.</p>
+    </div>
+
+    <div class="space-y-4">
+      <div>
+        <input 
+          type="password" 
+          bind:value={pin} 
+          onkeydown={handleKeydown}
+          placeholder="Zugangscode eingeben" 
+          class="input-field text-center tracking-widest text-lg"
+          autofocus
+        />
+      </div>
+
+      {#if error}
+        <p class="text-red-400 text-sm animate-pulse">{error}</p>
+      {/if}
+
+      <button onclick={handleLogin} class="btn-primary w-full">
+        Unlock Tool
+      </button>
     </div>
     
-    <div class="mt-16 text-[10px] text-slate-600 text-center max-w-xs leading-relaxed font-mono opacity-60">
-      GESCHÜTZTE UMGEBUNG<br>
-      ZUGRIFF NUR FÜR AUTORISIERTES PERSONAL
+    <div class="mt-8 text-xs text-slate-600">
+      Internal Use Only • Liechtenstein Law
     </div>
   </div>
 </div>

@@ -5,15 +5,19 @@ export * from './tarife/tp3b';
 export * from './tarife/tp3c';
 export * from './tarife/tp5';
 export * from './tarife/tp8';
-export * from './tarife/ggg';
+export * from './tarife/gkg'; // Die neue Datei
 
-import type { GKG_COLUMN } from './tarife/ggg';
+import type { GKG_COLUMN } from './tarife/gkg';
+import type { ServiceKind } from './calculator/types';
 
-// 'GKG' = Berechnet nach Tabelle
-// 'BARAUSLAGE' = Manuelle Eingabe (Taxi, Kopien, etc.)
 export type TarifPosten = 
-  | 'TP1' | 'TP2' | 'TP3A' | 'TP3A_Session' | 'TP3B' | 'TP3C' 
-  | 'TP5' | 'TP6' | 'TP7' | 'TP8' | 'TP9' | 'GKG' | 'BARAUSLAGE';
+  | 'TP1' | 'TP2' | 'TP3A' | 'TP3B' | 'TP3C' 
+  | 'TP5' | 'TP5i' | 'TP6' | 'TP6i' | 'TP7' | 'TP7 1' | 'TP7 2' | 'TP7 3'
+  | 'TP8' | 'TP8 1' | 'TP8 2' | 'TP9' | 'FIX'
+  | 'TP4 I 1' | 'TP4 I 2 1.F' | 'TP4 I 2 2.F' | 'TP4 I 3a' | 'TP4 I 3b'
+  | 'TP4 I 3c' | 'TP4 I 3d' | 'TP4 I 4' | 'TP4 I 5'
+  | 'TP4 II 1' | 'TP4 II 2 1.F' | 'TP4 II 2 2.F' | 'TP4 II 3a' | 'TP4 II 3b'
+  | 'TP4 II 3c' | 'TP4 II 3d' | 'TP4 II 4' | 'TP4 II 5';
 
 export interface FeeStep {
   limit: number;
@@ -25,113 +29,102 @@ export interface ActionItem {
   label: string;
   description: string;
   keywords: string[];
-  gkgColumn?: GKG_COLUMN; // Wenn gesetzt, trigger GKG Logik
+  kind?: ServiceKind; // Suchtreffer setzt auch den Leistungstyp (SS / TS / OTS).
+  gkgColumn?: GKG_COLUMN; // Standard GKG Spalte für diese Aktion
 }
 
-export interface ServiceGroup {
-  id: string; // Changed to string to allow abstract IDs like 'CASH'
-  label: string;
-  description?: string;
-  items: ActionItem[];
-}
+export const ACTION_ITEMS: ActionItem[] = [
+  // === TP 1 ===
+  { 
+    id: 'TP1', label: 'Einfache Mitteilung', description: 'TP 1 Z I lit. a RATV', 
+    keywords: ['anzeige', 'mitteilung', 'schreiben'], gkgColumn: 'zivil' 
+  },
+  { 
+    id: 'TP1', label: 'Akteneinsicht', description: 'TP 1 Z I lit. b RATV', 
+    keywords: ['akteneinsicht', 'auskunft'], gkgColumn: 'zivil'
+  },
+  
+  // === TP 2 (Mahn/Schuld) ===
+  { 
+    id: 'TP2', label: 'Mahnklage / Zahlbefehl', description: 'TP 2 Z I Ziff. 1 lit. a RATV', 
+    keywords: ['mahnklage', 'zahlbefehl'], gkgColumn: 'schuld' // GGG Spalte Schuldentrieb
+  },
+  { 
+    id: 'TP2', label: 'Rechtsöffnung', description: 'TP 2 Z I Ziff. 1 lit. b RATV', 
+    keywords: ['rechtsöffnung'], gkgColumn: 'sicherung' // GGG Spalte Sicherung
+  },
+  { 
+    id: 'TP2', label: 'Scheidungsklage', description: 'TP 2 Z I Ziff. 1 lit. b RATV', 
+    keywords: ['scheidung', 'ehe'], gkgColumn: 'zivil' // Scheidung ist Zivilstreitig
+  },
+  { 
+    id: 'TP2', label: 'Exekutionsantrag', description: 'TP 2 Z I Ziff. 2 RATV', 
+    keywords: ['exekution', 'pfändung'], gkgColumn: 'exekution' // GGG Spalte Exekution
+  },
 
-export const SERVICE_GROUPS: ServiceGroup[] = [
-  {
-    id: 'TP1',
-    label: 'TP 1: Einfache Schriftsätze',
-    description: 'Anzeigen, Ansuchen, Fristerstreckungen',
-    items: [
-      { id: 'TP1', label: 'Anzeige / Mitteilung', description: 'TP1 I a: Blosse Anzeigen und Mitteilungen', keywords: ['anzeige', 'mitteilung'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Akteneinsicht / Auskünfte', description: 'TP1 I b: Ansuchen um Auskünfte, Akteneinsicht', keywords: ['akten', 'einsicht'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Fristen & Tagsatzungen', description: 'TP1 I c: Fristerstreckungen, Terminverschiebungen', keywords: ['frist', 'erstreckung'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Kostenbestimmungsantrag', description: 'TP1 I d: Anträge auf Kostenbestimmung', keywords: ['kosten', 'bestimmung'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Vollmacht Kündigung', description: 'TP1 I e: Widerruf/Kündigung Vollmacht', keywords: ['vollmacht'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Zurücknahme', description: 'TP1 I f: Zurücknahme Antrag/Rechtsmittel', keywords: ['zurücknahme', 'verzicht'], gkgColumn: 'zivil' },
-      // Zivil Spezifisch
-      { id: 'TP1', label: 'Kurator Antrag', description: 'TP1 II a: Bestellung Kurator', keywords: ['kurator'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Nebenintervention', description: 'TP1 II b: Beitrittserklärung', keywords: ['nebenintervention'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Streitwert Änderung', description: 'TP1 II c: Antrag Änderung Bemessungsgrundlage', keywords: ['streitwert'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Klagzurücknahme', description: 'TP1 II d: Zurücknahme Klage', keywords: ['klage', 'zurück'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Fortsetzung', description: 'TP1 II f: Aufnahme ruhendes Verfahren', keywords: ['fortsetzung', 'ruhen'], gkgColumn: 'zivil' },
-      { id: 'TP1', label: 'Berufungsanmeldung', description: 'TP1 II h: Formale Berufungsanmeldung', keywords: ['berufung', 'anmeldung'], gkgColumn: 'zivil' },
-    ]
+  // === TP 3A (Zivil) ===
+  { 
+    id: 'TP3A', label: 'Klage (Allgemein)', description: 'TP 3A Z I Ziff. 1 lit. a RATV', 
+    keywords: ['klage', 'zivil', 'prozess', 'leistung'], gkgColumn: 'zivil'
   },
-  {
-    id: 'TP2',
-    label: 'TP 2: Klagen (Mahn) & Kurze Schriftsätze',
-    description: 'Mahnklagen, Scheidung, Einsprüche',
-    items: [
-      { id: 'TP2', label: 'Mahnklage / Zahlbefehl', description: 'TP2 I 1a: Mahnklagen, Zahlbefehlsanträge', keywords: ['mahnklage', 'zahlbefehl'], gkgColumn: 'schuld' },
-      { id: 'TP2', label: 'Rechtsöffnung', description: 'TP2 I 1b: Rechtsöffnungsgesuch', keywords: ['rechtsöffnung'], gkgColumn: 'sicherung' },
-      { id: 'TP2', label: 'Scheidungsklage', description: 'TP2 I 1b: Scheidungsklagen', keywords: ['scheidung', 'ehe'], gkgColumn: 'zivil' },
-      { id: 'TP2', label: 'Klagbeantwortung (Kurz)', description: 'TP2 I 1c: Nur Bestreitung', keywords: ['antwort', 'bestreitung'], gkgColumn: 'zivil' },
-      { id: 'TP2', label: 'Einspruch Zahlbefehl', description: 'TP2 I 1c: Einspruch gegen Zahlbefehl', keywords: ['einspruch', 'zahlbefehl'], gkgColumn: 'schuld' },
-      { id: 'TP2', label: 'Sonstiger Schriftsatz', description: 'TP2 I 1e: Sonstige Schriftsätze', keywords: ['schriftsatz'], gkgColumn: 'zivil' },
-    ]
+  { 
+    id: 'TP3A', label: 'Einstweilige Verfügung', description: 'TP 3A Z I Ziff. 5 lit. a RATV', 
+    keywords: ['einstweilig', 'verfügung'], gkgColumn: 'sicherung'
   },
-  {
-    id: 'TP3A',
-    label: 'TP 3A: Klagen & Tagsatzung',
-    description: 'Substantiierte Schriftsätze & Verhandlungen',
-    items: [
-      { id: 'TP3A', label: 'Klage (Ausführlich)', description: 'TP 3A I: Klage mit Sachverhalt', keywords: ['klage', 'substantiiert'], gkgColumn: 'zivil' },
-      { id: 'TP3A_Session', label: 'Tagsatzung (Verhandlung)', description: 'TP 3A II: Mündliche Verhandlung (1. Std voll, weitere 50%)', keywords: ['verhandlung', 'tagsatzung', 'stunde'], gkgColumn: undefined },
-      { id: 'TP3A', label: 'Klagbeantwortung (Ausführlich)', description: 'TP 3A I: Beantwortung mit Sachverhalt', keywords: ['antwort', 'replik'], gkgColumn: 'zivil' },
-      { id: 'TP3A', label: 'Vorbereitender Schriftsatz', description: 'TP 3A I: Nach § 257 ZPO', keywords: ['vorbereitung'], gkgColumn: 'zivil' },
-      { id: 'TP3A', label: 'Einstweilige Verfügung', description: 'TP 3A I: Antrag EV', keywords: ['ev', 'einstweilig'], gkgColumn: 'sicherung' },
-      { id: 'TP3A', label: 'Kostenrekurs', description: 'TP 3A I: Kostenrekurs', keywords: ['rekurs', 'kosten'], gkgColumn: 'zivil' },
-    ]
+  { 
+    id: 'TP3A', label: 'Ausserstreit Antrag', description: 'TP 3A (Analogie)', 
+    keywords: ['ausserstreit', 'verlassenschaft'], gkgColumn: 'ausserstreit'
   },
-  {
-    id: 'TP3B_C',
-    label: 'TP 3B/C: Rechtsmittel',
-    description: 'Berufung & Revision',
-    items: [
-      { id: 'TP3B', label: 'Berufung', description: 'TP 3B: Berufung an Obergericht', keywords: ['berufung', 'obergericht'], gkgColumn: 'zivil' },
-      { id: 'TP3B', label: 'Berufungsbeantwortung', description: 'TP 3B: Berufungsbeantwortung', keywords: ['berufung', 'antwort'], gkgColumn: 'zivil' },
-      { id: 'TP3C', label: 'Revision', description: 'TP 3C: Revision an OGH', keywords: ['revision', 'ogh'], gkgColumn: 'zivil' },
-      { id: 'TP3C', label: 'Revisionsbeantwortung', description: 'TP 3C: Revisionsbeantwortung', keywords: ['revision', 'antwort'], gkgColumn: 'zivil' },
-    ]
+
+  // === TP 3B/C (Rechtsmittel) ===
+  { 
+    id: 'TP3B', label: 'Berufung', description: 'TP 3B Z I RATV', 
+    keywords: ['berufung', 'obergericht'], gkgColumn: 'zivil' // GGG Basis Zivil (wird dann verdoppelt in Logic)
   },
-  {
-    id: 'TP_CORR',
-    label: 'TP 5/6/8: Korrespondenz & Konferenz',
-    description: 'Briefe, Telefonate, Besprechungen',
-    items: [
-      { id: 'TP5', label: 'Einfaches Schreiben', description: 'Mahnung, kurze Mitteilung (TP5)', keywords: ['brief', 'email'], gkgColumn: undefined },
-      { id: 'TP6', label: 'Brief (Komplex)', description: 'Rechtsauskunft, Gutachten (TP6)', keywords: ['brief', 'gutachten'], gkgColumn: undefined },
-      { id: 'TP8', label: 'Konferenz / Telefonat', description: 'Besprechung pro 30min (TP8)', keywords: ['konferenz', 'telefon'], gkgColumn: undefined },
-    ]
+  { 
+    id: 'TP3C', label: 'Revision OGH', description: 'TP 3C Z I RATV', 
+    keywords: ['revision', 'ogh'], gkgColumn: 'zivil'
   },
-  {
-    id: 'CASH',
-    label: 'Barauslagen',
-    description: 'Gerichtsgebühren & Sonstige Auslagen',
-    items: [
-      { 
-        id: 'GKG', 
-        label: 'Gerichtsgebühren (GGG)', 
-        description: 'Automatische Berechnung nach GGG Tabelle', 
-        keywords: ['gericht', 'gebühr', 'ggg', 'gkg'], 
-        gkgColumn: 'zivil' // Default
-      },
-      { 
-        id: 'BARAUSLAGE', 
-        label: 'Sonstige Barauslage', 
-        description: 'Manuelle Eingabe (Fahrtkosten, Kopien etc.)', 
-        keywords: ['fahrt', 'reise', 'kopien', 'porto', 'spesen'], 
-        gkgColumn: undefined 
-      }
-    ]
-  }
+
+  // Tagsatzungen sind eigene Leistungen: ein Treffer setzt die Zeitberechnung
+  // und fügt keine Gerichtsgebühr hinzu. Der Tarif bleibt bewusst auswählbar.
+  ...(['TP2', 'TP3A', 'TP3B', 'TP3C'] as const).map(id => ({
+    id, kind: 'TS' as const, label: `Tagsatzung / Verhandlung – ${id}`,
+    description: 'Abrechnung nach Verhandlungsdauer',
+    keywords: ['tagsatzung', 'tagsatzungen', 'verhandlung', 'verhandlungen', 'termin', 'hearing', 'ts'],
+  })),
+  { id: 'TP3A', kind: 'OTS', label: 'Offene Tagsatzung', description: 'Künftige Verhandlung mit Kostenszenarien',
+    keywords: ['offene tagsatzung', 'tagsatzungen', 'verhandlung', 'termin', 'prognose', 'ots', 'pending hearing'] },
+
+  // === Nebenleistungen ===
+  { id: 'TP5', label: 'Einfaches Schreiben', description: 'TP 5 RATV', keywords: ['brief', 'schreiben', 'kurz'] },
+  { id: 'TP6', label: 'Brief (Komplex)', description: 'TP 6 RATV', keywords: ['brief', 'schreiben', 'komplex'] },
+  { id: 'TP8', label: 'Konferenz', description: 'TP 8 RATV', keywords: ['konferenz', 'besprechung'] },
+  // Varianten entsprechen den getrennten Zeilen in LIE_T. „i“ = eigener Tarif,
+  // damit dessen eigener Höchstbetrag und nicht der TP5-Höchstbetrag greift.
+  { id: 'TP5i', label: 'Einfaches Schreiben (Variante i)', description: 'TP 5i – eigener Tarif', keywords: ['brief', 'schreiben'] },
+  { id: 'TP6i', label: 'Komplexes Schreiben (Variante i)', description: 'TP 6i – eigener Tarif', keywords: ['brief', 'komplex'] },
+  { id: 'TP7 1', label: 'Geschäft ausserhalb der Kanzlei – TP7 1', description: 'Je halbe Stunde', keywords: ['auswärts', 'wegzeit'] },
+  { id: 'TP7 2', label: 'Geschäft ausserhalb der Kanzlei – TP7 2', description: 'Je halbe Stunde', keywords: ['auswärts', 'anwalt'] },
+  { id: 'TP7 3', label: 'Geschäft ausserhalb der Kanzlei – TP7 3', description: 'Je halbe Stunde', keywords: ['auswärts'] },
+  { id: 'TP8 1', label: 'Konferenz – TP8 1', description: 'Je halbe Stunde', keywords: ['konferenz'] },
+  { id: 'TP8 2', label: 'Kurzbesprechung – TP8 2', description: 'Unter 10 Minuten, 40% des Konferenztarifs', keywords: ['konferenz', 'manuell'] },
+  { id: 'TP9', label: 'Zeitversäumnis – TP9', description: 'LIE: 75 CHF je begonnene Stunde; Reisen und Voraussetzungen gesondert prüfen', keywords: ['reise', 'zeitversäumnis'] },
+  { id: 'FIX', label: 'Pauschalhonorar', description: 'Freier Betrag', keywords: ['pauschale', 'fix', 'manuell'] },
+  ...(['I', 'II'] as const).flatMap(group =>
+    (['1', '2 1.F', '2 2.F', '3a', '3b', '3c', '3d', '4', '5'] as const).map(suffix => ({
+      id: `TP4 ${group} ${suffix}` as TarifPosten,
+      label: `${group === 'I' ? 'Privatanklage' : 'Privatbeteiligung'} – TP4 ${group} ${suffix}`,
+      description: 'Strafverfahren – Delikt laut Aktvorgabe',
+      keywords: ['strafverfahren', 'privatanklage', 'privatbeteiligung', 'tp4'],
+    }))
+  ),
 ];
 
-export const ACTION_ITEMS: ActionItem[] = SERVICE_GROUPS.flatMap(g => g.items);
-
 export const TP_LABELS: Record<string, string> = {
-  'TP1': 'TP 1', 'TP2': 'TP 2', 'TP3A': 'TP 3A', 'TP3A_Session': 'TP 3A (Tagsatzung)', 'TP3B': 'TP 3B',
+  'TP1': 'TP 1', 'TP2': 'TP 2', 'TP3A': 'TP 3A', 'TP3B': 'TP 3B',
   'TP3C': 'TP 3C', 'TP5': 'TP 5', 'TP6': 'TP 6', 'TP7': 'TP 7',
-  'TP8': 'TP 8', 'TP9': 'TP 9',
-  'GKG': 'Gerichtsgebühren',
-  'BARAUSLAGE': 'Barauslage'
+  'TP8': 'TP 8', 'TP9': 'TP 9', 'TP5i': 'TP 5i', 'TP6i': 'TP 6i',
+  'TP7 1': 'TP 7 Z 1', 'TP7 2': 'TP 7 Z 2', 'TP7 3': 'TP 7 Z 3',
+  'TP8 1': 'TP 8 Z 1', 'TP8 2': 'TP 8 Z 2', 'FIX': 'Pauschalhonorar'
 };
